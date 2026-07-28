@@ -1,189 +1,217 @@
-# Finding A and B — ربع سکه ↔ مثقال
+# A/B at 2% Cost + Phase 2 (USD vs Gold Momentum)
 
-**Your question:** you hold 1 quarter coin. Sell it for mesghal when the quarter
-bubble is above **A**, buy it back when the bubble falls to **B**. Find A and B.
-
-**You were right and my previous benchmark was wrong.** I had been measuring
-against "hold مثقال." Your starting asset is a **quarter coin**, so the bar is
-holding that coin. Measured correctly, the strategy wins — decisively.
+Cost assumption updated to **2% per leg** (fee + slippage), as you specified.
+A full cycle ربع→مثقال→ربع pays **4 legs = 0.98⁴ = 0.9224**, so every round trip
+starts **7.8% in the hole.**
 
 ---
 
-## The answer
+## PART 1 — Best A/B at 2% cost
 
-| | A (sell ربع) | B (buy ربع) |
+### The hard constraint you correctly anticipated
+
+```
+Break-even:  (1 + A) / (1 + B)  >  1.0842
+```
+
+| B (buy) | A must exceed | minimum gap |
 |---|---|---|
-| **Recommended** | **65%** | **20%** |
-| Highest raw return | 60% | 30% |
-| Most stable plateau | 70% | 15% |
+| 15% | 24.7% | **9.7pp** |
+| 20% | 30.1% | **10.1pp** |
+| 25% | 35.5% | **10.5pp** |
+| 30% | 40.9% | **10.9pp** |
 
-**Recommended pair: A = 65%, B = 20%.**
+**You need a ~10pp minimum gap just to break even.** This is exactly the tension
+you identified — and it resolves *against* frequent trading. See §1.3.
 
-Result on 430 sessions (2024-10-30 → 2026-07-27), 0.75%/leg costs:
+### 1.1 The grid at 2%/leg
 
-```
-Start:   1 quarter coin        = 1.8288 g pure gold
-Finish:  1.4811 quarter coins  = 2.7087 g pure gold
-         +48.1% more gold, in 2 completed trades
-```
+Wealth in quarter coins, start = 1 coin. **Benchmark = 1.000.**
 
-C and D — the bounds you asked about, as observed:
-**C (floor) = 13.0%**, **D (ceiling) = 76.0%**.
-
----
-
-## Step 1 — Crossing counts (your method)
-
-How often the line actually crosses each candidate level:
-
-| A (sell) | upward crossings | | B (buy) | downward crossings |
-|---|---|---|---|---|
-| 40% | 4 | | 13% | **0** |
-| 45% | 8 | | 15% | 3 |
-| 50% | 8 | | 16% | 4 |
-| 55% | 4 | | 18% | 8 |
-| 60% | 4 | | 20% | **9** |
-| 65% | 4 | | 22% | 4 |
-| 70% | 2 | | 25% | 3 |
-| 75% | **1** | | 28% | **9** |
-
-This is exactly the right way to pick the levels. It rules out the extremes
-immediately: **A = 75% fires once** (not a strategy, a single event) and
-**B = 13% never fires** (it is the floor itself — you can't buy at the absolute
-minimum). The levels that fire often enough to be tradeable are
-**A ∈ [45%, 65%]** and **B ∈ [18%, 30%]**.
-
----
-
-## Step 2 — The full grid, measured in quarter coins
-
-Wealth after the period, starting from 1 quarter coin. **Benchmark = 1.000.**
-
-| A\B | 15% | 16% | 18% | 20% | 22% | 25% | 28% | 30% |
+| A\B | 15% | 18% | 20% | 22% | 25% | 28% | 30% | 32% |
 |---|---|---|---|---|---|---|---|---|
-| 40% | 1.349 | 1.333 | 1.333 | 1.333 | 1.491 | 1.369 | 1.281 | 1.329 |
-| 45% | 1.349 | 1.333 | 1.333 | 1.333 | 1.261 | 1.234 | 1.204 | 1.310 |
-| 50% | 1.349 | 1.333 | 1.333 | 1.333 | 1.261 | 1.234 | 1.204 | 1.342 |
-| 55% | 1.349 | 1.333 | 1.333 | 1.333 | 1.261 | 1.234 | 1.204 | 1.389 |
-| 60% | 1.387 | 1.371 | 1.371 | 1.371 | 1.297 | 1.269 | 1.238 | **1.612** |
-| 65% | **1.499** | 1.481 | 1.481 | 1.481 | 1.402 | 1.371 | 1.338 | 1.324 |
-| 70% | **1.499** | 1.481 | 1.481 | 1.481 | 1.402 | 1.371 | 1.338 | 1.324 |
+| 40% | 1.282 | 1.267 | 1.267 | 1.347 | 1.237 | 1.158 | 1.142 | 1.108 |
+| 45% | 1.282 | 1.267 | 1.267 | 1.199 | 1.173 | 1.144 | 1.184 | 1.184 |
+| 50% | 1.282 | 1.267 | 1.267 | 1.199 | 1.173 | 1.144 | 1.212 | 1.212 |
+| 55% | 1.282 | 1.267 | 1.267 | 1.199 | 1.173 | 1.144 | 1.255 | 1.255 |
+| **60%** | 1.319 | 1.303 | 1.303 | 1.233 | 1.206 | 1.177 | **1.457** | **1.457** |
+| 65% | 1.425 | 1.408 | 1.408 | 1.333 | 1.303 | 1.272 | 1.259 | 1.259 |
+| 70% | 1.425 | 1.408 | 1.408 | 1.333 | 1.303 | 1.272 | 1.259 | 1.259 |
 
-**All 56 cells beat holding the coin.** Worst cell = **1.204** (+20.4%).
-Median = 1.333 (+33%). Best = 1.612 (+61%).
+**All 56 cells still beat holding the coin**, even at 2%. Worst = 1.108 (+11%).
 
-This is the key result, and it is what I got wrong before. There is no
-parameter choice in this range that loses to holding the coin — the entire
-question is *how much* you gain, not *whether*.
+### 1.2 🔴 More trades actively destroys value
 
----
+I searched all 1,360 (A,B) combinations and grouped by trade count:
 
-## Step 3 — Why 65/20 and not 60/30
-
-60/30 scores highest (1.612) but sits on a spike:
-
-```
-        B=28%   B=30%   B=32%
-A=55%   1.204   1.389   1.389
-A=60%   1.238   1.612   1.612     ← 1.612 only when B ≥ 30
-A=65%   1.338   1.324   1.324
-```
-
-Moving B from 30% → 28% drops it 1.612 → 1.238. That is a **cliff**.
-
-Ranking every pair by its **worst neighbour** instead of its own score:
-
-| A | B | self | neighbourhood worst |
-|---|---|---|---|
-| 70% | 15% | 1.499 | **1.481** |
-| 70% | 16% | 1.481 | **1.481** |
-| 70% | 18% | 1.481 | **1.481** |
-| 65% | 15% | 1.499 | 1.371 |
-| 65% | 18% | 1.481 | 1.371 |
-
-The **A ∈ [65,70], B ∈ [15,20]** block is a genuine plateau — every pair in it
-returns 1.37–1.50 regardless of where exactly you put the line.
-
-I recommend **A=65%, B=20%** rather than 70/15 because A=70% crossed only **twice**
-and B=15% only **three times**. 65/20 sits on the same plateau but with levels the
-market actually reaches often enough to trade. It gives up ~1% of return for
-materially more opportunities.
-
----
-
-## Step 4 — Cost robustness
-
-| pair | 0% | 0.75% | 1.5% | 2.0% |
+| trades | best result | A | B | gap |
 |---|---|---|---|---|
-| A=60 B=30 | 1.713 | 1.612 | 1.518 | 1.457 |
-| **A=65 B=20** | 1.526 | **1.481** | 1.437 | 1.408 |
-| A=55 B=20 | 1.373 | 1.333 | 1.293 | 1.267 |
-| A=45 B=22 | 1.300 | 1.261 | 1.224 | 1.199 |
+| 1 | 1.390 | 63% | 10% | 53pp |
+| 2 | 1.425 | 63% | 14% | 49pp |
+| **4** | **1.457** | **59%** | **30%** | **29pp** |
+| 6 | 1.167 | 41% | 30% | 11pp |
+| 8 | 1.103 | 38% | 30% | 8pp |
 
-**Even at 2% per leg — worse than any real dealer — every pair still beats
-holding the coin by 20–46%.** Because the trade only fires 2–4 times, costs
-barely matter. This is the opposite of the high-turnover versions I tested
-earlier, where costs were binding.
+**This directly answers your concern.** You wanted more trades to convert more
+bubble into gold. But at 2%/leg the relationship **inverts above 4 trades**:
+going from 4 → 8 trades cuts your result from 1.457 to 1.103. The extra
+round trips are narrow-gap trades that barely clear the 7.8% hurdle, and the
+friction eats the rest.
+
+**4 trades is the optimum — not a compromise, an actual peak.**
+
+### 1.3 Recommended: A = 60%, B = 31%
+
+Ranked by *worst neighbour* (robustness, not peak):
+
+| A | B | self | worst neighbour |
+|---|---|---|---|
+| **60%** | **31%** | **1.457** | **1.274** |
+| 68% | 26% | 1.294 | 1.272 |
+| 62% | 31% | 1.457 | 1.259 |
+
+The A∈[58,62], B∈[30,32] block is a genuine plateau at 1.27–1.46.
+
+```
+A = 60%   (sell ربع → buy مثقال)
+B = 31%   (sell مثقال → buy ربع)
+gap = 29pp — nearly 3× the 10.1pp break-even
+```
+
+Result: **1.4570 coins** = 2.664 g fine gold, from 1.8288 g start → **+45.7%**
+
+Trades:
+```
+2024-11-01  SELL ربع @ 62.8%
+2025-02-11  BUY  ربع @ 29.8%
+2025-03-17  SELL ربع @ 76.0%
+2025-09-13  BUY  ربع @ 28.9%
+```
+
+Cost ladder (note how flat it is — the wide gap absorbs friction):
+
+| cost/leg | 0% | 1% | 1.5% | **2%** | 2.5% | 3% |
+|---|---|---|---|---|---|---|
+| coins | 1.713 | 1.580 | 1.518 | **1.457** | 1.399 | 1.342 |
+
+**Even at 3%/leg you keep +34%.** Note B moved up from 20% → 31% versus the
+0.75% case: higher costs push you to trade *sooner* on the buy side, because
+waiting for a deeper discount that may not arrive costs more than it saves.
 
 ---
 
-## The trades it would have made (A=65, B=20)
+## PART 2 — USD vs Mesghal momentum
+
+Fetched **441 sessions of USD/IRR** (`data/usd_irr.csv`), aligned to 375 sessions
+with the gold data. Removed 3 corrupted Nowruz-window rows (13% single-day
+"moves" that were tgju artifacts).
+
+### 2.1 The core series
 
 ```
-2025-03-17   SELL quarter @ RP = 76.0%    →  into mesghal
-2026-05-12   BUY  quarter @ RP = 19.0%    →  back into quarter
+R = Mesghal_rial / USD_rial   = price of a mesghal in dollars
+
+R rising  → gold outrunning USD → hold GOLD
+R falling → USD outrunning gold → hold USD
 ```
 
-Two decisions in 21 months. You sold the coin when its premium over melted gold
-was 76%, sat in mesghal while that premium collapsed, and bought back ~1.48
-coins with the proceeds of 1.
+Over the period: USD **+133%**, mesghal **+256%** → R **+53%**.
 
-That is precisely the mechanism you described, and the arithmetic is simply:
+### 2.2 🔴 The finding that kills the naive version
 
-```
-gram_gain = (1 + A) / (1 + B) × (1 − c)⁴
-          = 1.65 / 1.20 × 0.970  =  1.334  per completed cycle
-```
+Relative momentum (gold return − USD return):
 
-Each full A→B round trip compounds ~33% more gold at these levels.
+| horizon | mean | median | **gold wins** |
+|---|---|---|---|
+| 10d | +1.2pp | +1.3pp | **63%** |
+| 20d | +2.7pp | +2.7pp | **68%** |
+| 30d | +4.1pp | +4.2pp | **73%** |
+| 60d | +9.3pp | +10.3pp | **80%** |
+
+**Gold beats USD 63–80% of the time, and the edge grows with horizon.** This is
+not a symmetric two-sided market. A symmetric crossover rule flips into USD
+constantly and pays 4% round-trip to sit in the losing asset.
+
+SMA crossover results (2%/leg), benchmark hold-mesghal = 1.0000:
+
+| fast\slow | 20 | 30 | 50 | 80 | 120 |
+|---|---|---|---|---|---|
+| 5 | 0.357 | 0.414 | 0.858 | **1.079** | 1.046 |
+| 10 | 0.489 | 0.618 | 0.836 | 1.053 | 0.998 |
+| 15 | 0.373 | 0.638 | 0.955 | 1.059 | 1.033 |
+
+Only the slowest settings survive, and the best (1.079) fires **once**.
+
+### 2.3 The USD-winning episodes are too short to trade
+
+Using 20-day relative momentum:
+
+- **30 USD-winning episodes** in 375 sessions
+- lengths: min 1, **median 2**, max 20 sessions
+- only **2 episodes lasted ≥15 sessions**
+
+The two big ones:
+
+| period | length | gold | USD | USD edge |
+|---|---|---|---|---|
+| 2025-05-13 → 2025-06-01 | 17d | +2.3% | −1.7% | **−4.0pp** |
+| 2026-05-05 → 2026-05-31 | 20d | −5.4% | −6.0% | **−0.6pp** |
+
+**Even the best USD windows produced only a 4.0pp and 0.6pp edge — against a
+7.8% round-trip cost.** The episodes are real but they are too short and too
+shallow to pay for the switch.
+
+### 2.4 Asymmetric threshold — best possible attempt
+
+Only rotate to USD on *strong* USD momentum, requiring a big trigger:
+
+| k | switch-out | wealth | trades |
+|---|---|---|---|
+| 30 | ≤ −8pp | **0.9857** | 2 |
+| 20 | ≤ −10pp | 0.7881 | 4 |
+| 10 | ≤ −10pp | 0.7113 | 6 |
+| 20 | ≤ −3pp | 0.2309 | 23 |
+
+**Best achievable: 0.9857 — still below 1.0000 for simply holding gold.**
+
+### 2.5 Verdict on Phase 2
+
+**Do not add the USD leg at 2% cost.** On this data it cannot pay for itself:
+
+1. Gold structurally beats USD (68% of 20-day windows) — the rial devalues
+   against gold faster than against the dollar, because domestic gold carries
+   both the FX move *and* the world gold move.
+2. USD-winning episodes have a **median length of 2 sessions**.
+3. The best two episodes offered 4.0pp and 0.6pp — under a 7.8% hurdle.
+
+This matches the earlier `AUDIT` finding: your original workbook's Delta signal
+never once said "USD" in 365 sessions. Now we know that wasn't only a units bug —
+**it was also directionally correct.**
+
+**One caveat:** this sample is a period of extreme domestic gold strength (+256%)
+under war conditions. In a classic rial-devaluation shock with flat world gold,
+USD *can* lead. The tool to detect it is built and in the repo — but it should
+stay switched off until a regime appears where USD momentum persists for 30+
+sessions.
 
 ---
 
-## Important caveats
-
-1. **Only 2–4 completed trades in this window.** The direction is unambiguous
-   (56/56 cells profitable) but the *magnitude* rests on few events. Expect
-   ~+30% per cycle, not +61%.
-2. **The window contains one big down-leg** (76% → 13%), which flatters any
-   sell-high-buy-low rule. A period where RP grinds sideways at 40% would
-   produce no trades at all — that is fine (you just hold the coin), but it
-   means returns arrive in lumps, not steadily.
-3. **RP today is 21.6%** — just above B=20%. You are near the buy zone. The
-   floor of 13.0% was touched in May 2026.
-4. **Mint year matters** (`RESEARCH.md` §2): ۱۳۸۶ / ۱۴۰۳ / ۱۴۰۴ trade up to 1m
-   toman apart, and tgju's `rob` index blends them. Confirm which coin you are
-   quoted — on a 33%-per-cycle edge this is a detail, but on entry timing it
-   shifts RP by a few points.
-5. **C is not a hard floor.** 13.0% is the observed minimum in this data, not a
-   law. Coins cannot trade below melt indefinitely, so the true floor is
-   somewhere near 0–10%, but do not assume 13% holds.
-
----
-
-## Rule to follow
+## Combined recommendation
 
 ```
-IF holding ربع سکه  AND  RP ≥ 65%   →  SELL all ربع, buy مثقال
-IF holding مثقال    AND  RP ≤ 20%   →  SELL all مثقال, buy ربع
-OTHERWISE                            →  do nothing
+PRIMARY (active):
+  A = 60%  →  sell ربع سکه, buy مثقال
+  B = 31%  →  sell مثقال, buy ربع سکه
+  RP = (P_ربع / 1.8288) / (P_مثقال / 3.2489) − 1
+  Expect ~4 trades per 18 months. Do NOT force more.
 
-RP = (P_ربع / 1.8288) / (P_مثقال / 3.2489) − 1
-
-where 1.8288 = 2.032 g × 0.900   (fine gold in a quarter coin)
-      3.2489 = 4.6083 g × 0.705  (fine gold in a mesghal of آب‌شده)
+SECONDARY (built, disabled):
+  Track R = P_مثقال / P_USD and 30-day relative momentum.
+  Activate USD rotation ONLY if rel-momentum < −8pp persists 30+ sessions.
+  Currently: gold favoured.
 ```
 
-You need only two numbers off the dealer board. No dollar, no world spot — they
-cancel out of the ratio.
+**Current reading (2026-07-27): RP = 21.6%** — below B=31%, so the model says
+hold ربع سکه. 30-day gold-vs-USD momentum favours gold.
 
-**Current reading (2026-07-27): RP = 21.6% → HOLD, close to the buy trigger.**
+Data files: `data/qm_full.csv` (430 sessions), `data/usd_irr.csv` (441 sessions).
