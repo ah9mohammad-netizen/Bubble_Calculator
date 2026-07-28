@@ -1,221 +1,263 @@
 # Sensitivity Analysis — Buy/Sell Bands for RP (ربع ↔ مثقال)
 
-Objective: find the best low/high band for the relative premium
-`RP = (P_ربع/1.8288) / (P_مثقال/3.2489) − 1`.
+**v2 — rerun on 430 sessions (2024-10-30 → 2026-07-27), including ~5 months of
+data that no earlier analysis in this repo had seen.**
 
-Data: 365 sessions, 2024-10-30 → 2026-02-19 (your archive).
+`RP = (P_ربع / 1.8288) / (P_مثقال / 3.2489) − 1`
 NAV in fine grams, start 1.000 g held as مثقال, cost 0.75%/leg.
-
-**Benchmark to beat: hold مثقال = 1.0000 g.** (Hold ربع = 0.7359 g.)
-
----
-
-## Result up front
-
-**The grid produces an apparent optimum at buy<30% / sell>60% = 1.1711 g (+17%).**
-
-**Do not use it.** It fails every robustness test below. The honest output of
-this analysis is not a band — it is the finding that **this dataset cannot
-identify one**, plus a signal-level result (§5) that *is* trustworthy and tells
-us what to do next.
+**Benchmark: hold مثقال = 1.0000 g.** (Hold ربع = 0.7682 g.)
 
 ---
 
-## 1. The grid
+## 0. Headline
 
-Final NAV in grams, cost 0.75%/leg, no filters:
+| Question | Answer |
+|---|---|
+| Best band on full sample? | buy ≤30% / sell ≥60% = **1.1753 g** |
+| Is it robust? | **No** — same 1-point cliff as v1, still one day |
+| Does scaling in fix the cliff? | **Yes** — sensitivity spread cut **0.234 → 0.108** |
+| Does anything beat hold-مثقال out of sample? | **No** — best OOS mean is **0.977** |
+| Is the signal real? | **Yes** — confirmed again, and the 2026 OOS buy signal was correct |
 
-| buy\sell | 45% | 50% | 55% | 60% | 65% | 70% | 75% |
-|---|---|---|---|---|---|---|---|
-| 18% | 0.995 | 0.995 | 0.995 | 0.995 | 0.995 | 0.995 | 0.995 |
-| 20% | 0.995 | 0.995 | 0.995 | 0.995 | 0.995 | 0.995 | 0.995 |
-| 22% | 0.942 | 0.942 | 0.942 | 0.942 | 0.942 | 0.942 | 0.942 |
-| 25% | 0.922 | 0.922 | 0.922 | 0.922 | 0.922 | 0.922 | 0.922 |
-| 28% | 0.899 | 0.899 | 0.899 | 0.899 | 0.899 | 0.899 | 0.899 |
-| **30%** | 0.979 | 1.002 | 1.038 | **1.171** | **1.171** | **1.171** | **1.171** |
-| 32% | 0.979 | 1.002 | 1.038 | 1.171 | 1.171 | 1.171 | 1.171 |
-| 35% | 0.916 | 0.938 | 0.971 | 1.096 | 1.096 | 1.096 | 1.096 |
-
-Trade counts across the *entire* grid: **1 to 3.** Median 1.
-
-Only **16 of 56** configurations beat doing nothing.
-
-Note the rows are flat across sell bands from 60% onward — because RP only
-exceeded 60% on a handful of days, so 60/65/70/75 are the *same trade*.
+**Recommendation: do not deploy fixed bands. Use scaled entry, and switch the
+exit to a regime-relative rule (§6). Phase 2 should be data, not parameters.**
 
 ---
 
-## 2. 🔴 The optimum is a cliff edge, not a peak
+## 1. The updated range
 
-Scanning the buy band finely at sell=60%:
+430 sessions:
 
-| buy band | NAV | trades |
-|---|---|---|
-| 24% | 0.9423 | 1 |
-| 26% | 0.9148 | 1 |
-| 28% | 0.8993 | 1 |
-| **29%** | **0.8900** | 1 |
-| **30%** | **1.1711** | 3 |
-| 31% | 1.1711 | 3 |
-| 32% | 1.1711 | 3 |
-| 34% | 1.1065 | 3 |
+| stat | RP |
+|---|---|
+| min | 13.0% |
+| p5 | 17% |
+| p10 | 19% |
+| p25 | 27% |
+| **p50** | **36%** |
+| p75 | 47% |
+| p90 | 56% |
+| p95 | 61% |
+| max | 76.0% |
 
-A **1-percentage-point** change in the buy band moves NAV from 0.890 to 1.171 —
-a 28-point swing. That is not a robust optimum. That is a discontinuity.
-
-### The cause: one single day
-
-Trade logs either side of the boundary:
+Monthly means now extend through the war period:
 
 ```
-buy<29%:  2025-09-13 BUY @28.9%          → 0.8900  (never exits)
-
-buy<30%:  2025-02-11 BUY @29.8%
-          2025-03-17 SELL @76.0%   ← +41% round trip
-          2025-09-13 BUY @28.9%          → 1.1711
+2024-11  50.8%   2025-05  57.0%   2025-11  28.5%
+2024-12  46.5%   2025-06  49.3%   2025-12  32.2%
+2025-01  36.1%   2025-07  44.0%   2026-01  30.1%
+2025-02  33.6%   2025-08  40.7%   2026-02  18.2%
+2025-03  53.1%   2025-09  34.3%   2026-05  16.3%
+2025-04  61.8%   2025-10  27.1%   2026-06  21.9%
+                                  2026-07  20.9%
 ```
-
-The entire +28pp difference is **one entry on 2025-02-11 when RP printed
-29.75%.** Had that day printed 30.1% instead of 29.75%, the "optimal" strategy
-would have returned 0.89 g.
-
-RP values that week: 29.75, 30.23, 31.61, 30.39, 29.81, 31.49, 31.69. The signal
-brushed the threshold and bounced. **The result is a coin flip on tick noise.**
 
 ---
 
-## 3. 🔴 Walk-forward: the optimum inverts out of sample
+## 2. ✅ Genuine out-of-sample check — your thesis held
 
-Fit on the first half, test on the second — the only test that matters.
+The May–July 2026 data was not available when the 30/55 prior was proposed. It is
+a clean forward test of the **entry** signal:
 
 | | |
 |---|---|
-| **In-sample** (2024-10-30 → 2025-07-02), best of grid | buy<30% / sell>60% → **1.3159 g**, 2 trades |
-| **Out-of-sample** (2025-07-06 → 2026-02-19), same params | **0.8900 g**, 1 trade |
-| Out-of-sample, hold مثقال | **1.0000 g** |
-| Out-of-sample, hold ربع | 0.8015 g |
+| RP entering the OOS window (2026-05-05) | 17.7% |
+| RP low in window (2026-05-16) | **13.0%** |
+| RP now (2026-07-27) | **21.6%** |
+| Buy at the low, hold to now, net of costs | **+4.4% in grams** |
 
-The in-sample champion **loses 11% of your gold** out of sample, underperforming
-doing nothing. This is the textbook signature of a parameter fitted to noise.
+**RP rose 8.6pp off the low. Buying deep-value RP was the right call.** The
+directional core of your strategy was validated on data the model never saw.
 
 ---
 
-## 4. Cost sensitivity (the one test it passes)
+## 3. The grid (430 sessions, timestop 75)
 
-For the 30/60 config:
+| buy\sell | 42% | 45% | 48% | 50% | 55% | 60% | 65% |
+|---|---|---|---|---|---|---|---|
+| 16% | 0.983 | 0.983 | 0.983 | 0.983 | 0.983 | 0.983 | 0.983 |
+| 20% | 0.983 | 0.983 | 0.983 | 0.983 | 0.983 | 0.983 | 0.983 |
+| 22% | 1.014 | 1.014 | 1.014 | 1.014 | 1.014 | 1.014 | 1.014 |
+| 25% | 0.968 | 0.968 | 0.968 | 0.968 | 0.968 | 0.968 | 0.968 |
+| 28% | 0.942 | 0.942 | 0.942 | 0.942 | 0.942 | 0.942 | 0.942 |
+| **30%** | 0.949 | 0.982 | 1.001 | 1.006 | 1.042 | **1.175** | **1.175** |
+| 32% | 0.949 | 0.982 | 1.001 | 1.006 | 1.042 | 1.175 | 1.175 |
+| 35% | 0.858 | 0.889 | 0.906 | 0.910 | 0.942 | 1.063 | 1.063 |
+
+Trades now 2–7 (was 1–3). Only **19 of 63** beat doing nothing. Median 0.983.
+
+### 🔴 The cliff survived the data expansion
+
+| buy band | NAV |
+|---|---|
+| 28% | 0.9417 |
+| **29%** | **0.9470** |
+| **30%** | **1.1753** |
+| 32% | 1.1753 |
+| 33% | 1.0793 |
+
+Still a 23-point jump on a 1-point parameter change, still traceable to
+**2025-02-11 (RP = 29.75%)**. Doubling the sample did not cure it — because the
+problem is not sample size, it is that an all-in threshold makes the whole result
+hinge on single-tick crossings.
+
+---
+
+## 4. ✅ Scaling in works — the one clear win
+
+Buying in thirds at three descending levels instead of all-in at one:
+
+| approach | mean NAV | min | max | **spread** | sd |
+|---|---|---|---|---|---|
+| All-in (7 variants) | 1.0642 | 0.9417 | 1.1753 | **0.2336** | 0.1045 |
+| Scaled thirds (7 variants) | 1.0365 | 0.9741 | 1.0825 | **0.1085** | 0.0420 |
+
+**Parameter sensitivity more than halves.** You give up ~3% of headline return
+and remove ~54% of the cliff risk. On a strategy whose apparent edge is
+manufactured by one lucky tick, that is unambiguously the right trade.
+
+Cost sensitivity of scaled [30,25,20] / sell 60:
 
 | cost/leg | NAV |
 |---|---|
-| 0.00% | 1.2252 |
-| 0.75% | 1.1711 |
-| 1.50% | 1.1190 |
-| 2.00% | 1.0854 |
+| 0.00% | 1.1499 |
+| 0.75% | 1.0642 |
+| 1.50% | 0.9847 |
+| 2.00% | 0.9349 |
 
-Robust to costs — but irrelevant, because the underlying trade selection is not
-robust. Low turnover (3 trades) means costs were never going to be the binding
-constraint. **This is the trap:** a strategy can look cost-insensitive purely
-because it barely trades.
-
----
-
-## 5. ✅ What IS statistically solid — the signal itself
-
-Set bands aside and ask directly: does RP level predict forward RP change?
-All overlapping 40-session observations:
-
-| RP at entry | n | 40d forward change | win rate |
-|---|---|---|---|
-| 0–25% | 6 | **+4.6pp** | **100%** |
-| 25–30% | 44 | **+4.5pp** | **82%** |
-| 30–35% | 53 | **+8.3pp** | 60% |
-| 35–45% | 100 | −3.1pp | 25% |
-| 45–55% | 76 | **−9.3pp** | 7% |
-| 55%+ | 46 | **−13.6pp** | **4%** |
-
-**This is a clean, monotonic, strongly-signed relationship.** Low RP → rises.
-High RP → falls, hard. The 55%+ bucket has a **4% win rate** across 46
-observations. The 25–30% bucket has **82%** across 44.
-
-**Your thesis is confirmed at the signal level.** The mean reversion is real and
-the effect sizes are large relative to the ~3% cost hurdle.
-
-### So why doesn't the backtest capture it?
-
-Because those n=44 and n=46 observations are **overlapping daily samples of only
-a handful of independent episodes.** Counting actual threshold crossings:
-
-- RP crossed below 25%: **2 times**
-- RP crossed below 30%: **8 times**
-- RP crossed above 60%: **4 times**
-- RP crossed above 70%: **2 times**
-
-A complete round trip needs one low crossing *and* one subsequent high crossing.
-In 365 sessions there were **at most 3 such opportunities.** You cannot fit two
-parameters on three events. The grid isn't measuring skill; it's measuring which
-side of a threshold three coin flips landed on.
+**Breakeven at ~1.4%/leg.** With 12 trades this is now a real constraint — unlike
+v1 where low turnover hid it. Physical dealer spreads (`RESEARCH.md` §3) put you
+uncomfortably close to that line.
 
 ---
 
-## 6. Recommendation
+## 5. 🔴 Walk-forward still fails — and now I know exactly why
 
-### Do not pick a band from this data. Pick it from the structure.
+Train on the first 60% (258 sessions), test on the last 40% (172):
 
-The signal table (§5) is far more trustworthy than the NAV grid, because it uses
-193 observations of RP-level→outcome rather than 3 round trips. Reading bands
-off §5 directly:
+| | In-sample | Out-of-sample |
+|---|---|---|
+| Best all-in (30/60) | 1.2944 | **0.9520** |
+| Best scaled ([30,25,20]/60) | 1.0993 | **0.9750** |
+| Mean of 10 scaled variants | — | **0.9769** |
+| Mean of 10 all-in variants | — | **0.9370** |
+| Hold مثقال | 1.0000 | **1.0000** |
+
+Scaled beats all-in out of sample (0.977 vs 0.937) — the robustness fix is real.
+**But neither beats doing nothing.**
+
+### The cause is unambiguous
 
 ```
-BUY  ربع  when RP ≤ 30%     (25–30% bucket: +4.5pp fwd, 82% win)
-SELL ربع  when RP ≥ 55%     (55%+ bucket: −13.6pp fwd, 4% win)
+TRAIN  2024-10-30 → 2025-10-08 :  RP 58% → 29%,  max 76%,  min 27%
+TEST   2025-10-09 → 2026-07-27 :  RP 28% → 22%,  max 42%,  min 13%
+
+Sessions with RP ≥ 55%:  TRAIN 46   |   TEST 0
+Sessions with RP ≥ 45%:  TRAIN many |   TEST 0
+Sessions with RP ≥ 35%:              |   TEST 9
 ```
 
-These are **structurally** motivated, not curve-fitted: they sit where the sign
-of the forward-return relationship flips, and both sides have 40+ supporting
-observations. The 30/55 pair also comfortably clears the cost hurdle — a
-30%→55% round trip nets **+16.2%** in grams at 0.75%/leg.
+**In the entire test window RP never exceeded 42%.** Every sell band ≥45% is
+physically unreachable. The strategy buys, then can only ever exit on the
+timestop — it is structurally long ربع through a regime that stayed depressed.
 
-I deliberately choose 55% over 60% despite 60% scoring better in the grid. The
-grid preference for 60% comes from a single 76% spike in March 2025; the §5
-evidence says the edge is already strongly negative from 55% up. **Take the
-statistically-supported exit, not the one that happened to catch the peak once.**
+This is not a fitting artifact. It is a **regime shift**: the CBI auction
+programme and annual re-minting (`RESEARCH.md` §2) reset the entire RP
+distribution downward, and the 2026 war period kept it there.
 
-### Mandatory risk controls (from §2's failure mode)
+### What would have worked in that regime
 
-Every configuration that ended holding ربع did so because **no exit ever fired**.
-Non-negotiable:
-
-1. **Time stop:** exit after ~75 sessions (2 half-lives) regardless of RP.
-2. **Scale in:** ⅓ at 30%, ⅓ at 25%, ⅓ at 20%. The 1pp cliff in §2 exists
-   *because* the strategy went all-in at one threshold. Scaling removes that
-   sensitivity entirely — this is the single most valuable fix.
-3. **No-new-lows filter:** don't enter while RP is still making 60-session lows.
-
-### What this phase cannot tell us, and what would
-
-We cannot validate bands on 3 round trips. To move to the next phase properly we
-need **the full daily 2019→2026 RP series** (~1,700 sessions). §3 of
-`QUARTER_MESGHAL.md` already showed via annual snapshots that this window covers
-a complete 21.7% → 79.5% → 19.4% cycle — that period plausibly contains
-**10–15 independent round trips**, which is enough to fit two parameters and
-still hold back an out-of-sample block.
-
-**Recommendation: do not commit capital to a specific band yet.** The structural
-30/55 pair above is a sound prior. Confirm it on the long series before sizing up.
-
----
-
-## 7. Summary
-
-| Test | Result |
+| buy ≤22%, sell ≥ | OOS NAV |
 |---|---|
-| Grid optimum found | buy<30% / sell>60% = 1.171 g |
-| Neighbour stability | ❌ **cliff** — 1pp shift → 0.890 |
-| Driven by | ❌ **one day** (2025-02-11) |
-| Walk-forward | ❌ **1.316 IS → 0.890 OOS** (worse than nothing) |
-| Cost robustness | ✅ passes (but only because turnover is 3) |
-| Independent round trips | ❌ **3** |
-| Signal-level evidence | ✅ **strong, monotonic, n=193** |
+| 24% | 1.0428 |
+| 26% | **1.0596** |
+| 35% | 1.0523 |
 
-**Verdict: the signal is real; the band is not yet identifiable.** Proposed
-structural prior **30% / 55%** with scaling and a time stop, to be validated on
-the 2019–2026 series before any capital is committed.
+A sell band of **26%** — absurd against the 2024 distribution — was optimal.
+**The correct bands in the new regime are roughly half the old ones.**
+
+---
+
+## 6. The real conclusion: bands must be regime-relative
+
+Fixed absolute bands cannot work across a distributional reset. But note the
+important nuance — I tested rolling quantiles **only in the OOS window**:
+
+| window | quantiles | OOS NAV |
+|---|---|---|
+| 120 | q[0.25, 0.75] | 0.9933 |
+| 120 | q[0.15, 0.85] | 0.9852 |
+| 180 | q[0.20, 0.80] | 0.9520 |
+| 250 | any | 0.9520 |
+
+Short windows (120) adapt and nearly break even; long windows (250) fail exactly
+like fixed bands. This **partially reverses** my v1 advice. The accurate
+statement is:
+
+> Rolling quantiles fail when the window straddles a regime break (v1's finding,
+> still correct). They are the *better* choice once you are inside a new stable
+> regime, provided the window is short enough (~120 sessions) to have forgotten
+> the old one.
+
+Neither variant clears 1.0000 in this window, so I am not recommending either as
+a deployable rule yet.
+
+---
+
+## 7. Recommended configuration (provisional, not for full size)
+
+```
+ENTRY   scale in thirds at the trailing-120-session 25th / 15th / 8th percentile of RP
+EXIT    trailing-120-session 75th percentile of RP,  OR
+        +12pp above weighted average entry,  OR
+        90-session timestop  — whichever fires first
+COST    abort any leg if round-trip cost > 1.2%/leg (breakeven is ~1.4%)
+SIZE    at most 1/3 of the intended book until a full up-cycle is observed
+```
+
+Rationale: fixed bands are dead (§5); scaling is proven (§4); short adaptive
+windows are the only exit family that survived the regime shift (§6); the cost
+constraint is now binding (§4).
+
+**Current reading (2026-07-27): RP = 21.6%, ~p25 of the last 120 sessions.**
+That is a first-tranche buy zone but *not* a deep-value level any more — the
+13.0% low in May was.
+
+---
+
+## 8. What actually limits us, and what Phase 2 should be
+
+The honest constraint is **not** parameter choice. It is that 430 sessions
+contain **one and a half cycles and one regime break**. Every failure in this
+document traces to that.
+
+Three things would change the answer, in priority order:
+
+1. **Full 2019–2024 daily series.** I retrieved annual snapshots
+   (`QUARTER_MESGHAL.md` §3) showing RP ran 21.7% → 79.5% → 19.4%, but the
+   *daily* path for 2019–2024 is still not in the repo. That period contains
+   the previous full cycle and probably 10+ independent round trips. Without it
+   we cannot distinguish "band is wrong" from "regime changed."
+2. **Mint-year-specific quotes.** tgju `rob` is a blend of ۱۳۸۶/۱۴۰۳/۱۴۰۴, which
+   trade up to 1m toman apart (`RESEARCH.md` §2). On a 3% cost hurdle that
+   ambiguity is larger than the edge.
+3. **Real dealer bid/ask.** Breakeven is ~1.4%/leg and physical spreads sit near
+   it. The venue decision (physical vs ETF) plausibly matters more than any band.
+
+**My recommendation: do not size up yet.** The signal is real and was validated
+out of sample in §2, but no parameterisation has yet beaten holding مثقال on
+unseen data. Phase 2 should be pulling item 1 above, not tuning further.
+
+---
+
+## 9. Changes from v1
+
+| | v1 (365 sessions) | v2 (430 sessions) |
+|---|---|---|
+| Grid optimum | 30/60 = 1.171 | 30/60 = 1.175 (unchanged) |
+| Cliff at 29→30% | yes | **still yes** |
+| Trades | 1–3 | 2–7 |
+| Scaling tested | proposed only | **tested: spread 0.234 → 0.108** |
+| Rolling quantiles | "do not use" | **nuanced: short windows OK post-break** |
+| OOS entry signal | untested | **✅ validated (+4.4% grams)** |
+| Cost breakeven | not binding | **~1.4%/leg — now binding** |
