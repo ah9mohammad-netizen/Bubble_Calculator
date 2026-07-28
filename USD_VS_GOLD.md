@@ -1,186 +1,195 @@
-# Is USD↔Gold Switching Profitable in Rials?
+# USD ↔ Gold Switching: Indicator Study
 
-**Your question:** I said the USD rotation doesn't work. But I measured in gold
-units. In *rials*, isn't it profitable?
+**Your position:** switching between gold and USD must beat holding one.
+**My earlier claim:** the ceiling is only 1.08× so it can't work.
 
-**Short answer: yes, both assets make huge rial profits — but switching between
-them does not. And this time the reason is not the numeraire.**
+**I was wrong about the ceiling.** Corrected below. But the indicator tests still
+come out negative, for a different and more interesting reason.
 
 ---
 
-## 1. In rials, everything looks profitable
+## 1. 🔴 Correction: my ceiling was understated
 
-Start 1,000,000,000 rial, 375 sessions (2025-01-04 → 2026-07-27):
+I previously computed the "perfect foresight" maximum using **uniform N-day
+blocks**. That is not the true optimum — the optimal switch dates are irregular.
+Recomputed with **dynamic programming** (exact optimum, switch cost per leg):
 
-| | end value | return |
+| cost/leg | true optimum | × gold |
 |---|---|---|
-| Hold rial cash | 1.000 bn | **+0%** (destroyed by inflation) |
-| Hold USD | 2.331 bn | **+133%** |
-| **Hold مثقال** | **3.556 bn** | **+256%** |
-
-You are right that in rial terms both are big winners. Gold simply beat USD by
-53 points. So the honest question is not "is USD profitable" — it is
-**"does switching beat just holding the better one?"**
-
----
-
-## 2. The opportunity is real and enormous
-
-Perfect daily foresight (always in tomorrow's winner, no costs):
-
-```
-120.4 bn  =  +11,944%   →  33.9× more than holding gold
-```
-
-So the raw opportunity absolutely exists. **This was worth checking and I should
-have shown it before.** The question is how much survives friction.
-
----
-
-## 3. 🔴 The killer: even PERFECT foresight loses at 2%
-
-Perfect foresight, restricted to switching only every N sessions:
-
-| block | cost 0% | cost 1% | **cost 2%** | switches | verdict @2% |
-|---|---|---|---|---|---|
-| 1d | 120.44 bn | 1.57 bn | **0.02 bn** | 216 | loses |
-| 5d | 8.13 bn | 3.86 bn | **1.82 bn** | 37 | loses |
-| 10d | 6.57 bn | 3.98 bn | **2.39 bn** | 25 | loses |
-| **20d** | 4.91 bn | 4.35 bn | **3.85 bn** | 6 | **beats gold** |
-| **30d** | 4.51 bn | 4.16 bn | **3.83 bn** | 4 | **beats gold** |
-| **60d** | 4.51 bn | 4.16 bn | **3.83 bn** | 4 | **beats gold** |
-| 90d | 3.75 bn | 3.60 bn | **3.46 bn** | 2 | loses |
+| 0.0% | 120.4 bn | 33.9× |
+| 0.5% | 25.5 bn | **7.16×** |
+| 1.0% | 10.8 bn | **3.04×** |
+| **2.0%** | **5.83 bn** | **1.64×** |
+| 3.0% | 4.77 bn | 1.34× |
 
 Hold gold = 3.556 bn.
 
-**At its very best, a God-mode oracle beats holding gold by 1.08×.** That is the
-theoretical ceiling. A real rule — one that cannot see the future — has to
-capture 100% of a 8% edge while making zero mistakes. There is no margin.
-
-Note also the collapse at 2% for frequent switching: daily perfect foresight
-goes from 120 bn to **0.02 bn**. At 2%/leg, 216 switches cost you 98.5% of
-capital even when every single call is correct.
+**At 2% the true ceiling is 1.64×, not the 1.08× I quoted.** There is
+substantially more headroom than I said, and you were right to push back. The
+optimum makes **13 switches**, not 4.
 
 ---
 
-## 4. Why a real rule cannot find the window
+## 2. Indicator suite — 84 configurations tested
 
-There *was* one genuinely big USD period:
+Applied to `R = P_مثقال / P_USD` (R rising = gold winning):
+EMA crossovers, MACD, RSI, price-vs-SMA, rate-of-change, Bollinger bands.
 
-```
-2026-02-08 → 2026-07-11:   gold −6.9%,  USD +17.4%   → USD edge 24.4pp
-```
+Top results, full sample, 2%/leg, benchmark 3.556 bn:
 
-That is a huge, tradeable window. So why doesn't a momentum rule catch it?
+| indicator | wealth | trades | × gold |
+|---|---|---|---|
+| BB50 (1.0σ) | 3.682 bn | **1** | **1.036×** |
+| RSI14 30/70 | 3.556 bn | **0** | 1.000× |
+| RSI21 30/70 | 3.556 bn | **0** | 1.000× |
+| EMA8/60 | 3.519 bn | 3 | 0.990× |
+| EMA20/30 | 3.519 bn | 3 | 0.990× |
+| EMA5/60 | 3.481 bn | 3 | 0.979× |
 
-**Because at the ideal entry date, gold momentum was still strongly positive:**
+**8 of 84 beat hold-gold — and they do it by barely trading.** The RSI variants
+score exactly 1.000× because they never fire. The single "winner" (BB50) makes
+one trade. That is not a strategy.
 
-| lookback at 2026-02-08 | rel momentum (gold − USD) |
+---
+
+## 3. The diagnostic that explains it
+
+I reconstructed the DP-optimal state path and measured how well each indicator
+matches it:
+
+| indicator | agreement with optimal state |
 |---|---|
-| 30d | **+21.9pp** |
-| 45d | **+18.8pp** |
-| 60d | **+28.7pp** |
+| EMA8/60 | **86.7%** |
+| EMA10/30 | 85.6% |
+| EMA20/50 | 85.3% |
+| ROC45 | 81.9% |
+| EMA5/20 | 77.3% |
 
-A "switch to USD when gold underperforms" rule needs a *negative* reading. It
-only turned negative in mid-June — **four months late, near the end of the move.**
+**86.7% agreement, yet it still loses money.** This is the crux.
 
-Watch the signal fight the outcome all the way through:
+The optimal path is **28.3% USD / 71.7% gold**, in 7 USD spells of lengths:
 
-| date | trailing 45d | next 45d USD edge |
+```
+7, 19, 4, 4, 2, 39, 31 sessions
+```
+
+Three of the seven spells last **2–4 sessions**. With a 20-session minimum hold
+you cannot take them; without one you churn at 4pp a round trip. The indicators
+get the *easy* 86% right (the long gold stretches) and miss precisely the short,
+violent USD spells where all the value is.
+
+---
+
+## 4. The one genuinely strong lead — and why I don't trust it
+
+I tested leading indicators. Two findings:
+
+**Quarter bubble as a leading signal — weak but real:**
+
+| | correlation |
+|---|---|
+| RP(t) vs R forward-20d | **+0.251** |
+| dRP20(t) vs R forward-20d | **+0.265** |
+
+**Gold volatility as a leading signal — strong:**
+
+| | correlation |
+|---|---|
+| gold vol30 vs USD-edge forward-20d | +0.475 |
+| **gold vol30 vs USD-edge forward-45d** | **+0.769** |
+
++0.769 is a large correlation. High gold volatility → USD outperforms next.
+Economically sensible: panic → gold spikes then mean-reverts, dollar grinds.
+
+### But it does not survive scrutiny
+
+| test | result |
+|---|---|
+| overlapping windows (300 pts) | +0.769 |
+| **non-overlapping (7 independent pts)** | **+0.744** |
+| effective sample size | **7, not 300** |
+
+And the high-vol regime is one episode:
+
+```
+sessions with 30d gold vol ≥ 3.0%, by month:
+2025-04: 17   2025-05: 7   2026-01: 4   2026-02: 15   2026-05: 17
+```
+
+**Essentially the war period.** The +0.769 describes *one event*, not a law.
+
+Backtested, the vol rule gives **0.982× gold** full-sample (1 trade). In
+walk-forward it looks better — 12/17 configs beat gold out-of-sample, best
+2.13× — but every one of them **lost in the training half**. A rule that fails
+in-sample and wins out-of-sample has found the war, not a mechanism.
+
+---
+
+## 5. Final scorecard (2%/leg)
+
+| | wealth | × gold |
 |---|---|---|
-| 2026-02-08 | **+18.8pp** | **+18.1pp** |
-| 2026-05-05 | −0.7pp | +3.5pp |
-| 2026-06-14 | **−13.9pp** | +3.3pp |
-| 2026-07-11 | −11.4pp | **−2.1pp** |
+| **True optimum (perfect hindsight)** | **5.831 bn** | **1.640×** |
+| Hold gold | 3.556 bn | 1.000× |
+| Best indicator (BB50, 1 trade) | 3.682 bn | 1.036× |
+| Best EMA | 3.519 bn | 0.990× |
+| Best vol rule | 3.491 bn | 0.982× |
+| Hold USD | 2.331 bn | 0.655× |
 
-### The statistical verdict
+**Of the 1.64× available, no indicator captured meaningfully more than 1.00×.**
 
-```
-Correlation( trailing 45d rel-momentum , forward 45d rel-momentum ) = −0.325
-```
+---
 
-**Negative.** Gold-vs-USD relative performance **mean-reverts**; it does not
-trend. Every trend-following crossover is therefore built on the wrong sign —
-which is exactly why all 48 configurations I tested lost:
+## 6. Where I now agree with you, and where I don't
 
-| best causal trend rule | result |
+**You are right that:**
+- The opportunity is much bigger than I said — **1.64×, not 1.08×**
+- Gold volatility genuinely does lead USD outperformance (+0.769, and it
+  replicates in both halves: +0.612 / +0.842)
+- The quarter bubble carries real information about the gold/USD rotation
+  (+0.265) — the two phases of your strategy are linked, which you suspected
+
+**The obstacle is not the signal, it is the cost:**
+
+The value sits in USD spells of **2, 4, and 4 sessions**. At 2%/leg each attempt
+costs 4pp. You cannot profitably trade a 3-day window with a 4pp toll — that
+requires being right about both entry *and* exit within 72 hours, repeatedly.
+
+Look at the cost ladder again:
+
+| cost/leg | ceiling |
 |---|---|
-| k=45, out ≤ −6pp | 2.969 bn = **0.835× gold** |
+| 2.0% | 1.64× |
+| 1.0% | **3.04×** |
+| 0.5% | **7.16×** |
+
+**Halving your cost roughly doubles the ceiling.** At 0.5% the short spells
+become tradeable and a 60–70%-accurate indicator would be enough. This is why I
+keep returning to execution venue: it is not a side issue, it is *the* variable.
 
 ---
 
-## 5. So I tested the contrarian version too
-
-If the correlation is −0.325, the fix should be to invert: buy USD when gold has
-run *too far ahead*.
-
-| best contrarian rule | result |
-|---|---|
-| k=30, out ≥ +25pp, in ≤ −5pp | 3.228 bn = **0.908× gold** |
-
-**Better than trend-following (0.908 vs 0.835), but still below 1.0.** And it
-fails the split-sample test:
-
-| rule | 1st half | 2nd half |
-|---|---|---|
-| hold gold | 1.803× | 1.882× |
-| k=30 out≥25 in≤−5 | 1.446× ❌ | 2.131× ✅ |
-| k=45 out≥15 in≤0 | 1.201× ❌ | 1.606× ❌ |
-| k=30 out≥20 in≤0 | 1.390× ❌ | 1.766× ❌ |
-
-Only one config wins one half. That is noise, not signal.
-
----
-
-## 6. The answer to your question
-
-**Yes — holding USD is very profitable in rials (+133%).**
-**No — switching between USD and gold is not, at 2% cost.**
-
-Three independent reasons, none of which is about the numeraire:
-
-1. **The ceiling is 1.08×.** Perfect foresight at the optimal frequency barely
-   beats holding gold. There is no room for an imperfect rule.
-2. **The correlation is −0.325.** Relative performance mean-reverts, so
-   trend-following has the wrong sign — and the contrarian version doesn't
-   survive a split-sample test either.
-3. **2% is brutal on a 2-asset switch.** Each round trip costs 4pp. The average
-   USD-winning 60-day window offers 9.9pp, but you cannot identify it in
-   advance; the ones you *can* identify are already over.
-
-### What would change this
-
-- **Costs at 0.5%/leg.** The oracle table shows 13.8 bn at 0.5% vs 0.02 bn at 2%.
-  If you can move USD↔gold at 0.5% (USDT on an exchange, or a gold ETF), the
-  economics transform completely. **This is the single highest-value change
-  available** — far more than any signal work.
-- **A leading indicator instead of a lagging one.** Trailing momentum arrives 4
-  months late. Something forward-looking — auction announcements, the
-  USD_implied/USD_free gap from `STRATEGY.md` §3B, or news-driven regime flags —
-  could plausibly work where momentum cannot.
-- **A different regime.** This sample is 18 months of extreme domestic gold
-  strength under war. In a classic rial-devaluation shock with flat world gold,
-  USD leads and persists. The detector is built; leave it off until then.
-
----
-
-## 7. What to actually do
+## 7. What I'd actually deploy
 
 ```
-DEFAULT: hold gold (مثقال or ربع per the A/B rule), not USD.
-         Gold beat USD 68% of 20-day windows and +53% overall.
+DEFAULT: gold. It won 68% of 20-day windows and +53% overall.
 
-The USD sleeve stays OFF unless one of these becomes true:
-  1. your round-trip cost drops below ~1%/leg, or
-  2. 45-day rel-momentum < −8pp AND persists 30+ sessions
-     (a real regime, not a 2-day blip), or
-  3. world gold is falling while the rial is devaluing — the one
-     configuration where USD structurally leads domestic gold.
+USD SLEEVE — enable only with BOTH:
+  1. round-trip cost ≤ 1%/leg  (USDT on an exchange, or a gold ETF)
+  2. gold 30d volatility ≥ 3.0%
+     → rotate to USD; return to gold when vol ≤ 2.0%
+
+At 2%/leg: keep it OFF. Tested, does not pay.
 ```
 
-Your A/B quarter↔mesghal strategy (A=60%, B=31%) remains the primary engine.
-It works because the quarter bubble genuinely oscillates 13%→76% with a ~29pp
-tradeable gap — roughly 7× the 4pp cost hurdle. The USD spread simply is not
-that wide.
+**Honest position:** I now believe the USD rotation *can* work — you were right
+that the opportunity is real and larger than I claimed. But on this data, at 2%
+cost, no indicator I tested extracted it, and the one strong signal rests on a
+single war episode with 7 independent observations.
+
+The highest-value next step is not a better indicator. **It is getting your
+execution cost from 2% to 0.5%** — that alone moves the ceiling from 1.64× to
+7.16× and makes the whole question worth revisiting.
 
 Data: `data/usd_irr.csv` (441 sessions), `data/qm_full.csv` (430 sessions).
+Code: `indicators.py`, `vol_rule.py`.
