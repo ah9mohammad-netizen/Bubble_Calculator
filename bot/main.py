@@ -336,16 +336,29 @@ class Health(BaseHTTPRequestHandler):
 
 
 def main():
+    # 1. Bind the health port FIRST so Railway's healthcheck can never race the
+    #    data seeding or a Telegram outage.
+    port = int(os.getenv("PORT", "8080"))
+    try:
+        srv = HTTPServer(("0.0.0.0", port), Health)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        log.info("health server listening on 0.0.0.0:%s", port)
+    except Exception:
+        log.exception("could not bind health port %s", port)
+
+    # 2. Fail loudly and readably if the deploy is missing its variables.
     if not TOKEN or not CHAT_ID:
-        log.error("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required")
+        missing = [n for n, v in (("TELEGRAM_BOT_TOKEN", TOKEN),
+                                  ("TELEGRAM_CHAT_ID", CHAT_ID)) if not v]
+        log.error("=" * 62)
+        log.error("MISSING REQUIRED RAILWAY VARIABLES: %s", ", ".join(missing))
+        log.error("Set them under Service -> Variables, then redeploy.")
+        log.error("=" * 62)
         sys.exit(1)
 
     store.init(seed_csv=SEED)
     log.info("storage ready: %s", store.stats())
 
-    port = int(os.getenv("PORT", "8080"))
-    threading.Thread(target=lambda: HTTPServer(("0.0.0.0", port), Health).serve_forever(),
-                     daemon=True).start()
     threading.Thread(target=poller, daemon=True).start()
 
     s = store.stats()
