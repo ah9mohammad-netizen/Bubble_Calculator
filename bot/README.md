@@ -41,6 +41,42 @@ Send `/help` to confirm.
 
 ---
 
+## Troubleshooting a failed deploy
+
+Build config now exists at **both** the repo root and in `bot/`, so the deploy
+works whether **Root Directory** is left blank or set to `bot`.
+
+| Symptom in Railway logs | Cause | Fix |
+|---|---|---|
+| `Nixpacks build failed` / `no start command could be found` | Railway found no `requirements.txt` at the directory it was pointed at | Now fixed — root `requirements.txt` + `Procfile` are committed. Redeploy. |
+| `ModuleNotFoundError: No module named 'requests'` | Install phase never ran | Confirm `requirements.txt` is in the directory Railway builds from |
+| `MISSING REQUIRED RAILWAY VARIABLES: …` then exit | Env vars unset | Service → **Variables** → add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` → redeploy |
+| Healthcheck failed / service marked unhealthy | Port not bound in time | Fixed — the health server binds `0.0.0.0:$PORT` *before* any other startup work |
+| Deploys but forgets position after redeploy | No volume attached | Add a volume mounted at `/data` and set `DATA_DIR=/data` |
+| `cannot create /data … falling back to ./data_local` | Volume missing or wrong mount path | Mount path must be exactly `/data` |
+
+**Verify a good boot** — the logs should show, in order:
+
+```
+INFO [bot] health server listening on 0.0.0.0:8080
+INFO [store] seeded prices.csv from .../seed_history.csv
+INFO [bot] storage ready: {'prices': 495, ...}
+INFO [bot] polling started
+```
+
+…and a **"Bot online"** message arrives in Telegram.
+
+You can also hit the service's public URL — it returns JSON:
+
+```json
+{"status":"ok","position":"MESGHAL","prices":495,"first":"2024-08-03","last":"2026-07-27","signals":0,"dir":"/data"}
+```
+
+After the first successful boot, run **`/setpos`** to sync the bot to what
+you actually hold.
+
+---
+
 ## Commands
 
 | Command | Does |
