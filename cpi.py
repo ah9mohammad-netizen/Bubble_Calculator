@@ -8,7 +8,17 @@ VERIFIED ANCHORS (published figures, sourced in PRESENTATION.md):
 Between anchors: geometric interpolation. Cross-check: 469.4/222.7 = 2.108
 vs (1+.32)x(1+.60) = 2.112  -> anchors are mutually consistent (0.2%).
 """
+# --- pre-2023-06 extension -------------------------------------------------
+# SCI changed base year to 1400=100 in 1402, so published 1401 index values
+# (base 1395=100) cannot be pasted directly onto the new-base series.
+# We therefore extend BACKWARD from the earliest verified new-base anchor
+# (2023-06 = 189.3) using SCI's published ANNUAL inflation rates:
+#     1401 (Mar2022-Mar2023) = 46.5%   1402 (Mar2023-Mar2024) = 40.7%
+# converted to a constant monthly rate. This is an ESTIMATE, flagged as such
+# in PRESENTATION.md; it only sets the inflation break-even line, and does not
+# enter any strategy calculation.
 ANCHORS = {
+ '2022-08':189.3/((1.407)**(10/12)),   # est.
  '2023-06':189.3,'2023-07':193.0,'2023-08':197.7,'2023-09':201.7,
  '2023-10':206.5,'2023-11':210.9,'2023-12':217.0,'2024-01':222.7,
  '2025-01':293.4,'2025-02':305.5,
