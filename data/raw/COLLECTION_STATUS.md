@@ -1,80 +1,63 @@
-# 2020 Backtest — Data Collection Status
+# 10-Year Backtest — Data Collection Status
 
-## Verified: tgju paged JSON API reaches back well past 2020
+## ✅ tgju HAS the full history — 13 years, back to 2013-07
 
-| symbol | series | recordsTotal | index of 2020-01-01 | earliest confirmed |
-|---|---|---|---|---|
-| `rob` | ربع سکه | 3,375 | ~1798 | 2019-08-28 seen at idx 1882 |
-| `mesghal` | مثقال | 3,468 | ~1859 | 2019-12-02 seen at idx 1882 |
-| `price_dollar_rl` | USD/IRR | 3,914 | ~1845 | 2019-11-19 seen at idx 1882 |
+Verified by probing the end of each series:
 
-Confirmed index anchors (for resuming):
+| symbol | series | recordsTotal | oldest record |
+|---|---|---|---|
+| `rob` | ربع سکه | 3,389 | **2013-07-24** |
+| `mesghal` | مثقال | 3,482 | **2013-07-24** |
+| `price_dollar_rl` | USD/IRR | 3,928 | earlier still |
 
-```
-rob      idx 1797 = 2020-01-05 , idx 1798 = 2020-01-04
-mesghal  idx 1858 = 2020-01-05 , idx 1859 = 2020-01-04
-usd      idx 1845 = 2020-01-01
-rob      idx 487  = 2024-10-05
-mesghal  idx 497  = 2024-11-05
-usd      idx 430  = 2025-01-21
-```
+So a 10-year (or even 13-year) backtest is possible. The limit is purely
+mechanical, not availability.
 
-## 🔴 Data bug found in `data/usd_irr.csv`
+## The bottleneck
 
-`usd_irr.csv` was built from **column 0 (open)**, but `qm_ext.csv` /
-`qm_full.csv` / `seed_history.csv` were built from **column 3 (close)**.
-The two gold series and the USD series are on *different price conventions*.
+- **bash has no outbound network** in this sandbox (DNS resolves, every TCP
+  connection returns `000`). Only the `fetch_page` tool reaches the internet,
+  so the paging loop cannot be scripted.
+- `fetch_page` returns **~60 records per call**.
+- No bulk/CSV endpoint exists. Probed and 404:
+  `/v1/market/indicator/history/{sym}`, `/chart-data/{sym}`, `/summary/{sym}`,
+  `/v1/chart/linechart/{sym}`, `/v1/chart/data?symbol=`
 
-Verified on 120 overlapping days (2024-08-28 → 2025-01-21):
+## Alternative sources evaluated (user-suggested)
 
-```
-mean |open − close| divergence : 0.73%
-max                            : 2.18%
-USD daily-return vol, open     : 0.985%
-USD daily-return vol, close    : 0.978%
-cumulative over window, open   : +39.16%
-cumulative over window, close  : +39.02%
-```
+| source | verdict |
+|---|---|
+| servatmandi.com/Entities/2 | Gold **ETFs** (صندوق طلا) on بورس کالا — not ربع/مثقال spot. **Valuable for the execution-cost problem** (0.3–0.5% round trip), not for history. |
+| navasan.net/dayRates.php | `?item=abshodeh` returns HTTP 500; root page is live prices only, no bulk archive. |
+| chartix.ir/market/tala/Abshode_Etehadiye | Live price + rendered chart. Has ربع سکه and دلار pages too, but history sits behind a paid "نمودار پیشرفته" (max.chartix.ir) and is not exposed as data. |
 
-**Impact: small but non-zero.** Cumulative USD return over 120 days shifts
-by 0.14pp, so the headline "hold USD" benchmark is barely affected. But
-Layer 1 compares gold vs USD on *forward 30-day* windows, and a 0.73%
-mean divergence is material at that horizon. Any rebuild must use
-**close (column 3) for all three series** for internal consistency.
+**Conclusion: tgju remains the best source.** It has the depth; it just has to
+be paged.
 
-## Constraint that shaped collection
-
-The sandbox has **no outbound network from bash** (DNS resolves,
-all TCP returns `000`). Only the `fetch_page` tool has egress, and it
-chunks responses at ~60-70 records per call. There is **no bulk/chart
-endpoint** — probed and 404:
+## Index anchors (for resuming)
 
 ```
-/v1/market/indicator/history/{sym}
-/v1/market/indicator/chart-data/{sym}
-/v1/market/indicator/summary/{sym}
-/v1/chart/linechart/{sym}
-/v1/chart/data?symbol=
+rob      idx 1106 = 2022-07-20   idx 1798 = 2020-01-04   idx 2600 = 2016-09-25
+mesghal  idx 1138 = 2022-08-14   idx 1859 = 2020-01-04   idx 2680 = 2016-10-05
+usd      idx 1137 = 2022-08-03   idx 1845 = 2020-01-01   idx 3050 = 2015-05-09
 ```
 
-So a full 3-series rebuild to 2020 = ~4,000 records ≈ 67 paged fetches.
-Not completable in a single session.
+## Effort remaining
 
-## Collected this session (raw, close prices)
+| target | records to fetch | ≈ paged calls |
+|---|---|---|
+| 2020-01 start (6.5 yr) | 2,121 | **~35** |
+| 2016-09 start (10 yr) | 4,949 | **~82** |
 
-- `rob_530_650.csv` — 120 sessions ربع سکه, 2024-03-05 → 2024-08-09 (close)
-- `usd_close_2024-08-28_2025-01-21.csv` — 120 sessions USD, both open and
-  close, used to diagnose the column bug above
+## Current coverage
 
-## Resume plan (user chose: all three series, ~2022 start)
+`data/master.csv` — **1,035 sessions, 2022-05-30 → 2026-07-27** (~4.2 years),
+all three assets, all **close** prices.
 
-Page backwards with `length=60`, saving after each batch:
+## Data-quality notes
 
-```
-rob      idx 650 → 1100   (2022-01 .. 2024-03)
-mesghal  idx 610 → 1100
-usd      idx 550 → 1100
-```
-
-Then rebuild all three from column 3 and re-run the five-approach
-comparison on the common date intersection.
+- Only 1 daily move >15% in the whole file: ربع +17.2% on 2025-03-17,
+  corroborated by مثقال moving the same direction. Real.
+- USD **2022-05-14 +19.45%** was investigated and **kept**: it is the
+  real "جراحی اقتصادی" subsidy-reform devaluation of May 2022, confirmed
+  against external reporting. Rows 2022-05-07..05-12 retained.
