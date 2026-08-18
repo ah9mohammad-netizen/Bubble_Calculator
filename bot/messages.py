@@ -1,23 +1,29 @@
-"""Telegram message builders (HTML parse mode)."""
+"""Telegram message builders (HTML parse mode).
+
+Layout rules learned the hard way:
+  * Persian is RTL. Putting Persian in the MIDDLE of a line that also has
+    digits makes Telegram reorder the line and the numbers jump around.
+    => Persian only ever appears at the END of a line, or alone on a line.
+  * Alignment only survives inside <pre>. Everything columnar goes in <pre>,
+    and <pre> content is ASCII-only so nothing shifts.
+"""
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 import strategy as S
 
 FA = {"QUARTER": "ربع سکه", "MESGHAL": "مثقال آب‌شده", "USD": "دلار"}
-EN = {"QUARTER": "Quarter Coin", "MESGHAL": "Melted Gold", "USD": "USD"}
+EN = {"QUARTER": "QUARTER COIN", "MESGHAL": "MESGHAL", "USD": "USD"}
 EMO = {"QUARTER": "🪙", "MESGHAL": "🥇", "USD": "💵"}
 
 
+# ───────────────────────── formatting helpers ─────────────────────────
 def rial(v) -> str:
-    if v is None:
-        return "—"
-    return f"{v:,.0f}"
+    return "—" if v is None else f"{v:,.0f}"
 
 
 def toman(v) -> str:
-    if v is None:
-        return "—"
-    return f"{v/10:,.0f}"
+    """Iranians quote toman = rial / 10."""
+    return "—" if v is None else f"{v/10:,.0f}"
 
 
 def tehran_now() -> str:
@@ -25,149 +31,171 @@ def tehran_now() -> str:
     return t.strftime("%Y-%m-%d %H:%M")
 
 
-def _bar(x, lo, hi, n=20) -> str:
-    if x is None:
-        return "—"
-    pos = max(0, min(n - 1, int((x - lo) / (hi - lo) * n)))
-    return "─" * pos + "◆" + "─" * (n - 1 - pos)
+def _gauge(val, lo, hi, t1, t2, w=26, fmt=lambda v: f"{v:g}"):
+    """Return (bar, ticks) — two strings of identical width, so they line up
+    under each other inside <pre>. t1/t2 are the two thresholds."""
+    if val is None:
+        return "—", ""
+    span = hi - lo
+
+    def pos(x):
+        return max(0, min(w - 1, int(round((x - lo) / span * (w - 1)))))
+
+    bar = ["·"] * w
+    bar[pos(t1)] = "|"
+    bar[pos(t2)] = "|"
+    bar[pos(val)] = "◆"
+
+    ticks = [" "] * w
+    for value in (t1, t2):
+        s = fmt(value)
+        start = max(0, min(w - len(s), pos(value) - len(s) // 2))
+        for k, ch in enumerate(s):
+            ticks[start + k] = ch
+    return "".join(bar), "".join(ticks)
 
 
+def _zone_rp(rp):
+    if rp <= S.B_BUY_QUARTER:
+        return "BUY QUARTER", "QUARTER"
+    if rp >= S.A_SELL_QUARTER:
+        return "BUY MESGHAL", "MESGHAL"
+    return "HOLD (no edge)", None
+
+
+def _zone_vol(v):
+    if v is None:
+        return "n/a", None
+    if v >= S.VOL_HI:
+        return "RISK-OFF → USD", "USD"
+    if v <= S.VOL_LO:
+        return "CALM → GOLD", "GOLD"
+    return "NEUTRAL", None
+
+
+# ───────────────────────── daily report ─────────────────────────
 def daily_report(snap, dec, state, bq=None, bm=None) -> str:
-    pos = state.get("position", "MESGHAL")
+    """Deliberately minimal: prices, the two signals with their ranges,
+    and one decision. Nothing else."""
     rp, vol = dec.rp, dec.vol
-    L = []
-    L.append("📊 <b>Iran Gold / FX Monitor</b>")
-    L.append(f"<i>{tehran_now()} Tehran</i>")
-    L.append("")
-    L.append("<b>━━ PRICES ━━</b>")
-    L.append(f"💵 USD        <code>{rial(snap.get('usd'))}</code> rial")
-    L.append(f"🥇 مثقال      <code>{rial(snap.get('mesghal'))}</code> rial")
-    L.append(f"🪙 ربع سکه    <code>{rial(snap.get('quarter'))}</code> rial")
     sp = snap.get("spot")
-    L.append(f"🌍 Gold spot  <code>{sp:,.2f}</code> $/oz" if sp else "🌍 Gold spot  —")
-    L.append("")
 
-    L.append("<b>━━ LAYER 1 · USD vs GOLD ━━</b>")
-    vtxt = f"{vol*100:.2f}%" if vol is not None else "n/a"
-    L.append(f"vol90 = <b>{vtxt}</b>   (USD ≥ {S.VOL_HI*100:.1f}% · gold ≤ {S.VOL_LO*100:.1f}%)")
+    rp_zone, _ = _zone_rp(rp)
+    v_zone, _ = _zone_vol(vol)
+    rp_bar, rp_tick = _gauge(rp * 100, 0, 90, S.B_BUY_QUARTER * 100, S.A_SELL_QUARTER * 100)
+    v_bar, v_tick = _gauge(None if vol is None else vol * 100, 0.5, 4.5,
+                           S.VOL_LO * 100, S.VOL_HI * 100,
+                           fmt=lambda v: f"{v:.1f}")
+
+    body = []
+    body.append("  PRICES                 toman")
+    body.append("  " + "-" * 29)
+    body.append(f"  USD           {toman(snap.get('usd')):>15}")
+    body.append(f"  Mesghal       {toman(snap.get('mesghal')):>15}")
+    body.append(f"  Quarter coin  {toman(snap.get('quarter')):>15}")
+    body.append(f"  Gold spot     {('%s $/oz' % f'{sp:,.2f}') if sp else '—':>15}")
+    body.append("")
+    body.append(f"  RP     {rp*100:5.1f}%      {rp_zone}")
+    body.append(f"  {rp_bar}")
+    body.append(f"  {rp_tick}")
+    body.append("  cheap coin      rich bubble")
+    body.append("")
+    vtxt = f"{vol*100:5.2f}%" if vol is not None else "  n/a"
+    body.append(f"  vol90  {vtxt}      {v_zone}")
     if vol is not None:
-        L.append(f"<code>{_bar(vol*100, 1.0, 4.5)}</code>")
-        L.append("<code>1.0%            4.5%</code>")
-    pref1 = "💵 USD" if dec.layer1 == "USD" else "🥇 GOLD"
-    L.append(f"→ prefers <b>{pref1}</b>")
-    L.append("")
+        body.append(f"  {v_bar}")
+        body.append(f"  {v_tick}")
+        body.append("  calm=gold        wild=USD")
 
-    L.append("<b>━━ LAYER 2 · ربع vs مثقال ━━</b>")
-    L.append(f"RP = <b>{rp*100:.1f}%</b>   (buy ربع ≤ {S.B_BUY_QUARTER*100:.0f}% · "
-             f"sell ≥ {S.A_SELL_QUARTER*100:.0f}%)")
-    L.append(f"<code>{_bar(rp*100, 10, 80)}</code>")
-    L.append("<code>10%              80%</code>")
-    L.append(f"→ prefers <b>{EMO[dec.layer2_pref]} {FA[dec.layer2_pref]}</b>")
-    if bq is not None and bm is not None:
-        L.append(f"<i>abs. bubble — ربع {bq*100:+.1f}% · مثقال {bm*100:+.1f}%</i>")
-    L.append("")
-
-    L.append("<b>━━ POSITION ━━</b>")
-    L.append(f"Holding: <b>{EMO[pos]} {FA[pos]}</b>")
-    if state.get("since"):
-        L.append(f"<i>since {state['since']}</i>")
-    L.append("")
-    if dec.action:
-        L.append("🚨 <b>ACTION REQUIRED — see signal</b>")
-    elif dec.blocked_by_gate:
-        L.append("⏳ Signal fired but min-hold gate is active")
-    else:
-        L.append("✅ <b>NO ACTION</b> — hold current position")
-    L.append(f"<i>{dec.reason}</i>")
-    return "\n".join(L)
-
-
-def signal_alert(from_pos, to_pos, dec, snap) -> str:
-    layer = "LAYER 1 (USD ↔ GOLD)" if "USD" in (from_pos, to_pos) else "LAYER 2 (ربع ↔ مثقال)"
     L = []
-    L.append("🚨🚨 <b>TRADE SIGNAL</b> 🚨🚨")
-    L.append(f"<i>{tehran_now()} Tehran · {layer}</i>")
-    L.append("")
-    L.append(f"<b>SELL</b>  {EMO[from_pos]} {FA[from_pos]}")
-    L.append(f"<b>BUY</b>   {EMO[to_pos]} {FA[to_pos]}")
-    L.append("")
-    L.append(f"RP    <b>{dec.rp*100:.1f}%</b>")
-    if dec.vol is not None:
-        L.append(f"vol90 <b>{dec.vol*100:.2f}%</b>")
-    L.append("")
-    L.append(f"<b>Why:</b> {dec.reason}")
-    L.append("")
-    L.append("<b>Prices now</b>")
-    L.append(f"💵 {rial(snap.get('usd'))}  🥇 {rial(snap.get('mesghal'))}  "
-             f"🪙 {rial(snap.get('quarter'))}")
-    L.append("")
-    if to_pos == "QUARTER":
-        tgt = S.A_SELL_QUARTER
-        gain = S.round_trip_gain(dec.rp, tgt)
-        L.append(f"🎯 Exit target RP ≥ {tgt*100:.0f}% → ≈ <b>{(gain-1)*100:+.1f}%</b> "
-                 f"in gold after costs")
-    elif from_pos == "QUARTER" and to_pos == "MESGHAL":
-        L.append("🎯 Bubble harvested — wait for RP ≤ "
-                 f"{S.B_BUY_QUARTER*100:.0f}% to re-enter ربع")
-    elif to_pos == "USD":
-        L.append(f"🛡 Risk-off. Return to gold when vol90 ≤ {S.VOL_LO*100:.1f}%")
-    L.append("")
-    L.append("⚠️ <i>Confirm mint year (۱۳۸۶/۱۴۰۳/۱۴۰۴) and dealer spread before trading.</i>")
+    L.append("📊 <b>IRAN GOLD MONITOR</b>")
+    L.append(f"<i>{tehran_now()} Tehran</i>")
+    L.append(f"<pre>{chr(10).join(body)}</pre>")
+    L.append(f"<b>TODAY →</b> {EMO[dec.target]} <b>{EN[dec.target]}</b>")
+    L.append(f"<b>امروز →</b> {FA[dec.target]}")
     return "\n".join(L)
 
 
+# ───────────────────────── trade signal ─────────────────────────
+def signal_alert(from_pos, to_pos, dec, snap) -> str:
+    layer = "LAYER 1" if "USD" in (from_pos, to_pos) else "LAYER 2"
+    body = []
+    body.append(f"  SELL   {EN[from_pos]}")
+    body.append(f"  BUY    {EN[to_pos]}")
+    body.append("")
+    body.append(f"  RP     {dec.rp*100:5.1f}%")
+    if dec.vol is not None:
+        body.append(f"  vol90  {dec.vol*100:5.2f}%")
+    body.append("")
+    body.append("  prices now             toman")
+    body.append(f"  USD           {toman(snap.get('usd')):>15}")
+    body.append(f"  Mesghal       {toman(snap.get('mesghal')):>15}")
+    body.append(f"  Quarter coin  {toman(snap.get('quarter')):>15}")
+
+    L = []
+    L.append("🚨 <b>TRADE SIGNAL</b>")
+    L.append(f"<i>{tehran_now()} Tehran · {layer}</i>")
+    L.append(f"<pre>{chr(10).join(body)}</pre>")
+    L.append(f"<b>SELL</b> {EMO[from_pos]} {FA[from_pos]}")
+    L.append(f"<b>BUY</b> {EMO[to_pos]} {FA[to_pos]}")
+    L.append("")
+
+    if to_pos == "QUARTER":
+        gain = S.round_trip_gain(dec.rp, S.A_SELL_QUARTER)
+        L.append(f"🎯 Exit when RP ≥ {S.A_SELL_QUARTER*100:.0f}% "
+                 f"→ ≈ <b>{(gain-1)*100:+.1f}%</b> more gold after costs")
+    elif from_pos == "QUARTER" and to_pos == "MESGHAL":
+        L.append(f"🎯 Bubble harvested. Re-enter when RP ≤ {S.B_BUY_QUARTER*100:.0f}%")
+    elif to_pos == "USD":
+        L.append(f"🛡 Risk-off. Back to gold when vol90 ≤ {S.VOL_LO*100:.1f}%")
+    L.append("")
+    L.append("⚠️ <i>Check the mint year and the dealer spread before trading.</i>")
+    return "\n".join(L)
+
+
+# ───────────────────────── help ─────────────────────────
 HELP = f"""📖 <b>Iran Gold Arbitrage Bot</b>
 
-<b>━━ THE IDEA ━━</b>
-Profit is measured in <b>grams of gold</b>, not rials. Two independent layers
-decide where 100% of the book sits.
+Profit is counted in <b>grams of gold</b>, not rials.
 
-<b>LAYER 1 — USD or GOLD?</b>
-Signal: <code>vol90</code> = 45-day volatility of مثقال returns.
-• vol90 ≥ <b>{S.VOL_HI*100:.1f}%</b> → risk-off to <b>USD</b>
-• while in USD, return to gold when vol90 ≤ <b>{S.VOL_LO*100:.1f}%</b>
-Evidence: bucketing 299 observations, when vol90 was 1.5–2.0% gold beat USD over
-the next 30 days <b>94%</b> of the time; at 3.5–4.0% it beat USD <b>0%</b> of
-the time. Monotonic across all buckets.
+<b>LAYER 2 — which gold?</b>
+<code>RP = (P_quarter/1.8288) / (P_mesghal/3.2489) − 1</code>
+The quarter coin's premium per gram of fine gold.
+• RP ≤ <b>{S.B_BUY_QUARTER*100:.0f}%</b> → buy the quarter coin
+• RP ≥ <b>{S.A_SELL_QUARTER*100:.0f}%</b> → switch to mesghal
+• between → hold, no edge
 
-<b>LAYER 2 — ربع سکه or مثقال?</b>
-Signal: <code>RP</code> = quarter's premium over melted gold per fine gram.
-<code>RP = (P_ربع/1.8288) / (P_مثقال/3.2489) − 1</code>
-• RP ≤ <b>{S.B_BUY_QUARTER*100:.0f}%</b> → buy <b>ربع سکه</b> (bubble cheap)
-• RP ≥ <b>{S.A_SELL_QUARTER*100:.0f}%</b> → switch to <b>مثقال</b> (bubble rich)
-• in between → hold, no edge
-RP has ranged <b>13% – 76%</b>. Each full cycle compounds
-<code>(1+A)/(1+B)×(1−2%)⁴ ≈ 1.13×</code> more gold.
+<b>LAYER 1 — gold or dollars?</b>
+<code>vol90</code> = 90-day volatility of mesghal returns.
+• vol90 ≥ <b>{S.VOL_HI*100:.1f}%</b> → risk-off to USD
+• vol90 ≤ <b>{S.VOL_LO*100:.1f}%</b> → back to gold
 
-<b>━━ BACKTEST (1 bn rial, 2% per leg) ━━</b>
-2025-01-04 → 2026-07-27, 375 sessions:
-<code>hold USD       2.331 bn   +133%   0 trades
-hold ربع سکه   3.103 bn   +210%   0 trades
-hold مثقال     3.556 bn   +256%   0 trades
-ربع↔مثقال      4.029 bn   +303%   3 trades
-TWO-LAYER      4.376 bn   +338%   4 trades ★</code>
-
-Longer gold-only window (2024-08 → 2026-07, 495 sessions):
-<code>hold ربع       3.484 bn   +248%
-hold مثقال     5.058 bn   +406%
-ربع↔مثقال      5.731 bn   +473%  = 1.65× holding ربع</code>
+<b>━━ BACKTEST ━━</b>
+1,000,000 toman · 2020-04-21 → 2026-07-27 · 6.4 years · 2% per leg
+<pre>plan            final toman  index  trades
+Hold USD         11,200,773   1120     0
+Hold mesghal     27,267,852   2727     0
+Hold quarter     28,299,465   2830     0
+Layer 2 only     46,971,072   4697     6
+Two-layer        48,758,579   4876    11
+Inflation (CPI)  11,567,489   1157     -</pre>
+Holding dollars returned +1020% and still <b>lost</b> to inflation.
 
 <b>━━ COMMANDS ━━</b>
-/status  — full dashboard: prices, both layers, position
-/price   — prices only (quick)
-/signal  — what the model says right now
-/position — current holding + how long
+/status — prices, both signals, today's decision
+/price — prices only
+/signal — what the model says now
+/position — what the bot thinks you hold
+/setpos quarter|mesghal|usd — sync it to reality
 /history — last 10 signals
-/setpos &lt;quarter|mesghal|usd&gt; — sync bot to your real holding
-/backfill — repair price history from tgju
-/stats   — stored rows, volume path
-/help    — this message
+/backfill — repair price history
+/stats — storage info
+/help — this message
 
 <b>━━ REALITY CHECKS ━━</b>
-• Only <b>4 trades</b> in the tested window. Small sample.
-• Layer 1 rests on 2 episodes, both in the 2026 war period.
-• tgju's <code>rob</code> blends mint years ۱۳۸۶/۱۴۰۳/۱۴۰۴ which trade up to
-  1m toman apart — <b>confirm which coin you are quoted</b>.
-• Screen prices ≠ dealer fills. Budget 2%/leg.
-• Trade reduced size until you've seen one full cycle live.
+• 6 trades in 6.4 years. It is a patient strategy.
+• Layer 1 fired 3 times only. It is the weakest part.
+• tgju's quarter index blends mint years ۱۳۸۶/۱۴۰۳/۱۴۰۴ that trade up to
+  1m toman apart. Confirm which coin you are quoted.
+• Screen prices are not dealer fills. Budget 2% per leg.
 """
