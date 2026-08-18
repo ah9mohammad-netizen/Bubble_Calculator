@@ -15,6 +15,17 @@ q.update(load('data/raw/rob_*.csv')); m.update(load('data/raw/mesghal_*.csv'))
 u=load('data/raw/usd_close_*.csv')
 for r in csv.DictReader(open('data/usd_irr.csv')):
     if r.get('usd') and r['date'] not in u: u[r['date']]=float(r['usd'])
+# ---- manual exclusions only --------------------------------------------
+# I tried an automatic one-day-spike filter at 4% and it removed REAL events
+# (2024-05-18 Raisi helicopter crash, 2026-02-02 war spike, 2022-06-11).
+# Iranian gold genuinely moves 8-14% in a day on news, so no purely
+# statistical rule can separate signal from placeholder.
+# Only rows VERIFIED as tgju placeholders are dropped: identical OHLC
+# (open=low=high=close) AND ~10% off both neighbours AND a non-trading day.
+BAD_USD = {'2021-12-02','2021-12-09','2021-12-16','2021-12-30','2022-01-13'}
+for k in BAD_USD: u.pop(k, None)
+print('  dropped %d verified-placeholder USD rows' % len(BAD_USD))
+
 d=sorted(set(q)&set(m)&set(u))
 with open('data/master.csv','w',newline='') as f:
     w=csv.writer(f); w.writerow(['date','quarter','mesghal','usd'])
