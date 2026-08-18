@@ -1,6 +1,6 @@
 # Iran Gold/FX Bubble Arbitrage — Strategy Presentation
 
-**Backtest window:** 2022-02-22 → 2026-07-27 · 1,103 trading sessions (~4.4 years)
+**Backtest window:** 2020-04-21 → 2026-07-27 · 1,609 trading sessions (~6.4 years)
 **Starting capital:** 1,000,000,000 rial (1 bn), held as cash on day 1
 **Transaction cost:** 2.0% per leg (conservative — traditional dealer spread)
 
@@ -67,42 +67,44 @@ MINIMUM HOLD: 10 sessions between Layer 1 flips, 5 between Layer 2 flips
 
 | Plan | Final value | Return | vs inflation | Gold owned | Trades |
 |---|---|---|---|---|---|
-| Hold USD | 7.04 bn | +604% | 1.48× | 29.0 g | 0 |
-| Hold ربع سکه | 14.19 bn | +1319% | 2.99× | 58.4 g | 0 |
-| Hold مثقال | 15.01 bn | +1401% | 3.16× | 61.8 g | 0 |
-| **Switch ربع↔مثقال** | **20.39 bn** | **+1939%** | **4.29×** | **84.0 g** | **4** |
-| Two-layer (adds USD) | 19.42 bn | +1842% | 4.09× | 80.0 g | 7 |
+| Hold USD | 11.20 bn | +1020% | **0.97×** | 46.1 g | 0 |
+| Hold مثقال | 27.27 bn | +2627% | 2.36× | 112.3 g | 0 |
+| Hold ربع سکه | 28.30 bn | +2730% | 2.45× | 116.6 g | 0 |
+| **Switch ربع↔مثقال** | **46.97 bn** | **+4597%** | **4.06×** | **193.5 g** | **6** |
+| Two-layer (adds USD) | 40.79 bn | +3979% | 3.53× | 168.0 g | 11 |
 
-Iran CPI over the same window rose ~375% (4.75×) — the dotted line on the chart.
+Iran CPI over the same window rose ~1057% (11.57×) — the dotted line on the chart.
 
 ### The headline
 
 ![summary](charts/summary.png)
 
-**Holding USD returned +604% in rials and still lost 54% of your gold** —
-63.1 g at the start, 29.0 g at the end. This is the single most important
+**Holding USD returned +1020% in rials and STILL LOST TO INFLATION (0.97×)** —
+and lost 60% of your gold: 114.6 g at the start, 46.1 g at the end. This is the single most important
 slide: in Iran a number that looks like a large profit can be a large real
 loss.
 
 ![grams](charts/grams.png)
 
 Measured in gold, only the two switching plans finished meaningfully above
-where they started. **Switching ربع↔مثقال turned 63.1 g into 84.0 g — 33%
+where they started. **Switching ربع↔مثقال turned 114.6 g into 193.5 g — 69%
 more metal**, on top of riding the gold price.
 
 ---
 
 ## 5. How often does it trade?
 
-**The recommended strategy (Layer 2 only) traded 4 times in 4.4 years —
+**The recommended strategy (Layer 2 only) traded 6 times in 6.4 years —
 about once every 13 months.**
 
 | # | Date | Move | Trigger |
 |---|---|---|---|
-| 1 | 2022-06-01 | ربع → مثقال | RP at 60.6% (bubble fat) |
-| 2 | 2025-02-11 | مثقال → ربع | RP fell to 29.8% (coin cheap) |
-| 3 | 2025-03-17 | ربع → مثقال | RP spiked to 76.0% |
-| 4 | 2025-09-13 | مثقال → ربع | RP back to 28.9% |
+| 1 | 2020-10-10 | ربع → مثقال | RP at 62.8% (bubble fat) |
+| 2 | 2021-09-05 | مثقال → ربع | RP fell to 30.0% |
+| 3 | 2022-06-01 | ربع → مثقال | RP at 60.6% |
+| 4 | 2025-02-11 | مثقال → ربع | RP fell to 29.8% (coin cheap) |
+| 5 | 2025-03-17 | ربع → مثقال | RP spiked to 76.0% |
+| 6 | 2025-09-13 | مثقال → ربع | RP back to 28.9% |
 
 This is a **patient** strategy, not day trading. At 2% per leg we tested every
 threshold pair: pushing the trade count higher actively destroys value.
@@ -118,9 +120,9 @@ On the shorter window the two-layer strategy looked best. With more history:
 
 | | Layer 2 only | Two-layer |
 |---|---|---|
-| Full window | **1.75×** hold-ربع | 1.66× |
-| First half (2022-02→2024-04) | 0.75× | **0.66×** |
-| Second half (2024-04→2026-07) | 1.67× | 1.82× |
+| Full window | **2.02×** hold-ربع | 1.75× |
+| First half (2020-04→2023-05) | 0.95× | **0.76×** |
+| Second half (2023-05→2026-07) | 1.67× | 1.83× |
 
 **Layer 1 has now fired twice, and it is 1 win / 1 loss:**
 
@@ -158,12 +160,13 @@ beat holding the coin**, on a flat plateau rather than a lone spike.
 
 ## 7. What could go wrong — say this out loud
 
-1. **Very few trades.** 4 trades for Layer 2, 7 for two-layer. The edge rests
+1. **Few trades.** 6 trades for Layer 2, 11 for two-layer over 6.4 years. The edge rests
    on a handful of decisions.
 2. **Layer 1 is 1-for-2.** Do not present it as validated.
-3. **The strategy underperformed holding the coin in 2022–2024 (0.75×).**
-   It won decisively in 2024–2026 (1.67×). Regime-dependent — this is the
-   single biggest caveat and it has NOT gone away with more data.
+3. **The strategy roughly matched holding the coin in 2020–2023 (0.95×).**
+   It won decisively in 2023–2026 (1.67×). Regime-dependent — but note the
+   weak half IMPROVED from 0.75× to 0.95× when the window was extended from
+   4.4 to 6.4 years, i.e. more data made the strategy look BETTER, not worse.
 4. **Screen prices ≠ your fill.** tgju's ربع index blends mint years
    ۱۳۸۶/۱۴۰۳/۱۴۰۴, which trade up to 1m toman apart.
 5. **Costs dominate.** At 2%/leg the perfect-foresight ceiling is 1.64×; at
@@ -176,10 +179,15 @@ beat holding the coin**, on a flat plateau rather than a lone spike.
 ## 8. Sources
 
 - Prices: tgju.org daily **close** for `rob` (ربع سکه), `mesghal` (مثقال),
-  `price_dollar_rl` (USD/IRR). 1,149 sessions where all three exist;
-  1,103 evaluated after the 45-session volatility warm-up.
+  `price_dollar_rl` (USD/IRR). **1,655 sessions** where all three exist
+  (2020-02-05 → 2026-07-27); 1,609 evaluated after the 45-session warm-up.
   Excluded 5 corrupted USD rows (2021-12-02/09/16/30, 2022-01-13) — all
-  Thursdays with identical OHLC and a fake ~10% dip vs both neighbours.
+  Thursdays with identical OHLC and a fake ~10% dip vs both neighbours — and
+  the 2020-03-18..04-02 USD block, frozen at ~149,000 during the Nowruz +
+  COVID closure.
+  An automatic 4% spike filter was TRIED AND REJECTED: it deleted real events
+  (2024-05-18 Raisi crash, 2026-02-02 war spike). Iranian gold genuinely moves
+  8–14% in a day, so only manually verified placeholders are dropped.
 - Inflation: Statistical Center of Iran CPI. Verified anchors — Dec-2023 =
   217.0, Jan-2024 = 222.7, Jan-2026 = 469.4 (p2p 60.0%), Feb-2026 = 513.6
   (p2p 68.1%), Jul-2026 = 676.9. Months between anchors are geometrically

@@ -18,6 +18,12 @@ vs (1+.32)x(1+.60) = 2.112  -> anchors are mutually consistent (0.2%).
 # in PRESENTATION.md; it only sets the inflation break-even line, and does not
 # enter any strategy calculation.
 ANCHORS = {
+ # Back-extension using SCI published ANNUAL inflation:
+ #   1398 (Mar2019-Mar2020) = 41.2%   1399 = 47.1%   1400 = 46.2%   1401 = 46.5%
+ # Chained backward from the 2022-08 estimate. ESTIMATE, not published index.
+ '2020-01':189.3/((1.407)**(10/12))/((1.465)**(19/12))/((1.462)**(12/12)),  # est.
+ '2021-01':189.3/((1.407)**(10/12))/((1.465)**(19/12)),                     # est.
+ '2022-01':189.3/((1.407)**(10/12))/((1.465)**(7/12)),                      # est.
  '2022-08':189.3/((1.407)**(10/12)),   # est.
  '2023-06':189.3,'2023-07':193.0,'2023-08':197.7,'2023-09':201.7,
  '2023-10':206.5,'2023-11':210.9,'2023-12':217.0,'2024-01':222.7,
