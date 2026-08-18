@@ -90,7 +90,7 @@ def evaluate(persist: bool = True):
     prices = store.load_prices()
     state = store.load_state()
     rp = S.relative_premium(snap["quarter"], snap["mesghal"])
-    vol = S.vol45(store.mesghal_series())
+    vol = S.vol90(store.mesghal_series())
     bq, bm = S.intrinsic_bubbles(snap["quarter"], snap["mesghal"],
                                  snap.get("usd"), snap.get("spot"))
 
@@ -165,7 +165,7 @@ def cmd_signal(chat):
         send(f"✅ <b>NO TRADE</b>\nHold {M.EMO[state['position']]} "
              f"<b>{M.FA[state['position']]}</b>\n\n"
              f"RP <b>{dec.rp*100:.1f}%</b>"
-             + (f" · vol45 <b>{dec.vol*100:.2f}%</b>" if dec.vol else "")
+             + (f" · vol90 <b>{dec.vol*100:.2f}%</b>" if dec.vol else "")
              + f"\n<i>{dec.reason}</i>", chat)
 
 

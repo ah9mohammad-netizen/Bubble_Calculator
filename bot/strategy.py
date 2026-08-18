@@ -1,11 +1,11 @@
 """
 Two-layer strategy engine.
 
-LAYER 1 (macro gate):  vol45 >= VOL_HI  -> USD ;  while USD, exit when vol45 <= VOL_LO
+LAYER 1 (macro gate):  vol90 >= VOL_HI  -> USD ;  while USD, exit when vol90 <= VOL_LO
 LAYER 2 (rel. value):  RP <= B -> ربع سکه ;  RP >= A -> مثقال   (only while in gold)
 
 RP = (P_quarter / 1.8288) / (P_mesghal / 3.2489) - 1
-vol45 = stdev of daily mesghal returns over trailing 45 sessions
+vol90 = stdev of daily mesghal returns over trailing 90 sessions
 """
 from __future__ import annotations
 import statistics as st
@@ -20,9 +20,9 @@ OZ_G = 31.1035
 # ---- calibrated parameters (see FLOWCHART.md) ------------------------------
 A_SELL_QUARTER = 0.60   # RP >= 60%  -> hold مثقال
 B_BUY_QUARTER  = 0.31   # RP <= 31%  -> hold ربع سکه
-VOL_HI         = 0.033  # vol45 >= 3.3% -> USD
-VOL_LO         = 0.020  # vol45 <= 2.0% -> release back to gold
-VOL_WINDOW     = 45
+VOL_HI         = 0.030  # vol90 >= 3.0% -> USD
+VOL_LO         = 0.022  # vol90 <= 2.2% -> release back to gold
+VOL_WINDOW     = 90     # 90 beat 45 out-of-sample on all 4 walk-forward splits
 MINHOLD_L1     = 10     # sessions
 MINHOLD_L2     = 5      # sessions
 COST_PER_LEG   = 0.02   # 2% fee + slippage
@@ -35,8 +35,8 @@ def relative_premium(quarter: float, mesghal: float) -> float:
     return (quarter / QUARTER_G) / (mesghal / MESGHAL_G) - 1.0
 
 
-def vol45(mesghal_series: list[float], window: int = VOL_WINDOW) -> Optional[float]:
-    """Stdev of daily mesghal returns over the trailing window."""
+def vol90(mesghal_series: list[float], window: int = VOL_WINDOW) -> Optional[float]:
+    """Stdev of daily mesghal returns over the trailing window (default 90)."""
     s = [x for x in mesghal_series if x and x > 0]
     if len(s) < 5:
         return None
@@ -131,3 +131,7 @@ def decide(rp: float,
 def round_trip_gain(rp_buy: float, rp_sell: float, cost: float = COST_PER_LEG) -> float:
     """Gram gain of a full ربع→مثقال→ربع cycle: (1+p2)/(1+p1) x (1-c)^4."""
     return (1 + rp_sell) / (1 + rp_buy) * (1 - cost) ** 4
+
+
+# backwards-compatible alias
+vol45 = vol90

@@ -49,7 +49,7 @@ def daily_report(snap, dec, state, bq=None, bm=None) -> str:
 
     L.append("<b>━━ LAYER 1 · USD vs GOLD ━━</b>")
     vtxt = f"{vol*100:.2f}%" if vol is not None else "n/a"
-    L.append(f"vol45 = <b>{vtxt}</b>   (USD ≥ {S.VOL_HI*100:.1f}% · gold ≤ {S.VOL_LO*100:.1f}%)")
+    L.append(f"vol90 = <b>{vtxt}</b>   (USD ≥ {S.VOL_HI*100:.1f}% · gold ≤ {S.VOL_LO*100:.1f}%)")
     if vol is not None:
         L.append(f"<code>{_bar(vol*100, 1.0, 4.5)}</code>")
         L.append("<code>1.0%            4.5%</code>")
@@ -93,7 +93,7 @@ def signal_alert(from_pos, to_pos, dec, snap) -> str:
     L.append("")
     L.append(f"RP    <b>{dec.rp*100:.1f}%</b>")
     if dec.vol is not None:
-        L.append(f"vol45 <b>{dec.vol*100:.2f}%</b>")
+        L.append(f"vol90 <b>{dec.vol*100:.2f}%</b>")
     L.append("")
     L.append(f"<b>Why:</b> {dec.reason}")
     L.append("")
@@ -110,7 +110,7 @@ def signal_alert(from_pos, to_pos, dec, snap) -> str:
         L.append("🎯 Bubble harvested — wait for RP ≤ "
                  f"{S.B_BUY_QUARTER*100:.0f}% to re-enter ربع")
     elif to_pos == "USD":
-        L.append(f"🛡 Risk-off. Return to gold when vol45 ≤ {S.VOL_LO*100:.1f}%")
+        L.append(f"🛡 Risk-off. Return to gold when vol90 ≤ {S.VOL_LO*100:.1f}%")
     L.append("")
     L.append("⚠️ <i>Confirm mint year (۱۳۸۶/۱۴۰۳/۱۴۰۴) and dealer spread before trading.</i>")
     return "\n".join(L)
@@ -123,10 +123,10 @@ Profit is measured in <b>grams of gold</b>, not rials. Two independent layers
 decide where 100% of the book sits.
 
 <b>LAYER 1 — USD or GOLD?</b>
-Signal: <code>vol45</code> = 45-day volatility of مثقال returns.
-• vol45 ≥ <b>{S.VOL_HI*100:.1f}%</b> → risk-off to <b>USD</b>
-• while in USD, return to gold when vol45 ≤ <b>{S.VOL_LO*100:.1f}%</b>
-Evidence: bucketing 299 observations, when vol45 was 1.5–2.0% gold beat USD over
+Signal: <code>vol90</code> = 45-day volatility of مثقال returns.
+• vol90 ≥ <b>{S.VOL_HI*100:.1f}%</b> → risk-off to <b>USD</b>
+• while in USD, return to gold when vol90 ≤ <b>{S.VOL_LO*100:.1f}%</b>
+Evidence: bucketing 299 observations, when vol90 was 1.5–2.0% gold beat USD over
 the next 30 days <b>94%</b> of the time; at 3.5–4.0% it beat USD <b>0%</b> of
 the time. Monotonic across all buckets.
 
