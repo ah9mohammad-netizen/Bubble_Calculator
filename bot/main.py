@@ -241,8 +241,12 @@ def cmd_stats(chat):
         f"range <code>{s['first']} → {s['last']}</code>",
         f"signals <b>{s['signals']}</b>",
         f"position <b>{store.load_state().get('position')}</b>",
-        f"basis obs <b>{store.basis_obs_count()}</b>/{S.Z_WINDOW + 1} "
-        f"(needed for z)"]), chat)
+        f"vol obs <b>{store.vol_obs_count()}</b>/{S.VOL_WINDOW + 1} (for vol90)",
+        f"basis obs <b>{store.basis_obs_count()}</b>/{S.Z_WINDOW + 1} (for z)",
+        f"gap since last <b>{store.gap_days()}</b> days",
+        ("✅ history is on a persistent volume"
+         if "data_local" not in str(store.DATA_DIR)
+         else "⚠️ NO VOLUME — history resets on redeploy")]), chat)
 
 
 def cmd_repair(chat):
@@ -403,6 +407,33 @@ def main():
 
     store.init(seed_csv=SEED)
     log.info("storage ready: %s", store.stats())
+
+    # 3. Warn loudly if history is NOT on a persistent volume. Without one,
+    #    every redeploy resets to the seed and vol90/z silently drift.
+    if "data_local" in str(store.DATA_DIR):
+        log.error("=" * 62)
+        log.error("NO PERSISTENT VOLUME: history lives in the container and")
+        log.error("will be LOST on every redeploy. Mount a volume at /data")
+        log.error("and set DATA_DIR=/data.")
+        log.error("=" * 62)
+
+    # 4. If the bot was down, prices are missing. A hole turns two prices
+    #    weeks apart into one giant 'daily' return and inflates vol90 —
+    #    enough to fake a RISK-OFF signal. Self-heal before deciding anything.
+    gap = store.gap_days()
+    if gap >= 2:
+        log.warning("history gap of %d days — backfilling to repair vol90", gap)
+        try:
+            merged = datafeed.backfill(rows=400)
+            n = 0
+            for d, vals in sorted(merged.items()):
+                if vals.get("quarter") or vals.get("mesghal"):
+                    store.upsert_price(d, vals.get("quarter"), vals.get("mesghal"),
+                                       vals.get("usd"), vals.get("spot"))
+                    n += 1
+            log.info("gap backfill merged %d days; now %s", n, store.stats())
+        except Exception:
+            log.exception("gap backfill failed — vol90 may be distorted")
 
     threading.Thread(target=poller, daemon=True).start()
 

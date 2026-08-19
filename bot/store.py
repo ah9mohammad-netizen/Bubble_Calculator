@@ -106,6 +106,34 @@ def basis_obs_count() -> int:
                if r.get("mesghal") and r.get("usd") and r.get("spot"))
 
 
+def vol_obs_count() -> int:
+    """How many stored sessions carry a mesghal price (drives vol90)."""
+    return sum(1 for r in load_prices() if r.get("mesghal"))
+
+
+def last_date() -> Optional[str]:
+    rows = load_prices()
+    return rows[-1]["date"] if rows else None
+
+
+def gap_days() -> int:
+    """Calendar days between the last stored session and today (Tehran).
+
+    A gap means the bot was down. Holes corrupt vol90, because two prices
+    three weeks apart become one enormous 'daily' return.
+    """
+    from datetime import datetime, timezone, timedelta
+    last = last_date()
+    if not last:
+        return 0
+    try:
+        d0 = datetime.strptime(last, "%Y-%m-%d").date()
+    except ValueError:
+        return 0
+    today = (datetime.now(timezone.utc) + timedelta(hours=3, minutes=30)).date()
+    return max(0, (today - d0).days)
+
+
 def _fallback():
     global DATA_DIR, PRICES_CSV, SIGNALS_CSV, STATE_JSON
     DATA_DIR = Path("./data_local")
