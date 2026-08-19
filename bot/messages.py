@@ -104,6 +104,8 @@ def daily_report(snap, dec, state, bq=None, bm=None, dec_extra=None) -> str:
     body.append(f"  Mesghal       {toman(snap.get('mesghal')):>15}")
     body.append(f"  Quarter coin  {toman(snap.get('quarter')):>15}")
     body.append(f"  Gold spot     {('%s $/oz' % f'{sp:,.2f}') if sp else '—':>15}")
+    if snap.get("stale_quarter"):
+        body.append(f"  coin quote is from {snap.get('quarter_lag_from')}")
     body.append("")
     body.append(f"  RP     {rp*100:5.1f}%      {rp_zone}")
     body.append(f"  {rp_bar}")

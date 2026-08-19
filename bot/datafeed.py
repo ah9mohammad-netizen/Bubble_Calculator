@@ -90,6 +90,16 @@ def fetch_latest() -> dict:
     # Tehran business date
     tehran = datetime.now(timezone.utc) + timedelta(hours=3, minutes=30)
     snap["date"] = snap.get("mesghal_date") or tehran.strftime("%Y-%m-%d")
+
+    # RP compares two instruments, so it is only meaningful if BOTH quotes are
+    # from the same session. tgju updates `rob` less often than `mesghal`
+    # (the quarter coin is quoted in coarse 5m-toman steps and often does not
+    # print at all), so the naive "latest row of each" pairing silently
+    # compares a stale coin against a fresh mesghal. Flag it.
+    qd, md = snap.get("quarter_date"), snap.get("mesghal_date")
+    snap["stale_quarter"] = bool(qd and md and qd != md)
+    snap["quarter_lag_from"] = qd if snap["stale_quarter"] else None
+
     snap["errors"] = errors
     snap["ok"] = bool(snap.get("quarter") and snap.get("mesghal"))
     return snap
