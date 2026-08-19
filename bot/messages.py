@@ -55,6 +55,16 @@ def _gauge(val, lo, hi, t1, t2, w=26, fmt=lambda v: f"{v:g}"):
     return "".join(bar), "".join(ticks)
 
 
+def _zone_z(z):
+    if z is None:
+        return "n/a"
+    if z > S.Z_ENTER_USD:
+        return "STRETCHED"
+    if z < S.Z_EXIT_USD:
+        return "NORMAL"
+    return "ELEVATED"
+
+
 def _zone_rp(rp):
     if rp <= S.B_BUY_QUARTER:
         return "BUY QUARTER", "QUARTER"
@@ -74,7 +84,7 @@ def _zone_vol(v):
 
 
 # ───────────────────────── daily report ─────────────────────────
-def daily_report(snap, dec, state, bq=None, bm=None) -> str:
+def daily_report(snap, dec, state, bq=None, bm=None, dec_extra=None) -> str:
     """Deliberately minimal: prices, the two signals with their ranges,
     and one decision. Nothing else."""
     rp, vol = dec.rp, dec.vol
@@ -106,6 +116,23 @@ def daily_report(snap, dec, state, bq=None, bm=None) -> str:
         body.append(f"  {v_bar}")
         body.append(f"  {v_tick}")
         body.append("  calm=gold        wild=USD")
+
+    # ---- world-parity basis z-score ----
+    z = dec_extra.get("z") if dec_extra else None
+    bas = dec_extra.get("basis") if dec_extra else None
+    zgate = (dec_extra or {}).get("z_state", "GOLD")
+    if bas is not None:
+        body.append("")
+        btxt = f"{bas*100:+5.1f}%"
+        body.append(f"  basis {btxt}      vs world parity")
+        if z is not None:
+            z_bar, z_tick = _gauge(z, -1.0, 3.0, S.Z_EXIT_USD, S.Z_ENTER_USD,
+                                   fmt=lambda v: f"{v:.2f}")
+            body.append(f"  z     {z:+5.2f}      {_zone_z(z)}")
+            body.append(f"  {z_bar}")
+            body.append(f"  {z_tick}")
+            body.append("  cheap vs world   rich vs world")
+            body.append(f"  gate: {zgate}")
 
     L = []
     L.append("📊 <b>IRAN GOLD MONITOR</b>")
@@ -164,6 +191,15 @@ The quarter coin's premium per gram of fine gold.
 • RP ≤ <b>{S.B_BUY_QUARTER*100:.0f}%</b> → buy the quarter coin
 • RP ≥ <b>{S.A_SELL_QUARTER*100:.0f}%</b> → switch to mesghal
 • between → hold, no edge
+
+<b>BASIS Z — is local gold rich vs the world?</b>
+<code>FairValue = XAU/USD ÷ 31.1035 × USDIRR × 3.2489</code>
+<code>Basis     = Mesghal / FairValue − 1</code>
+The z-score is Basis standardised over a rolling <b>75</b> observations.
+• z &gt; <b>+1.75</b> for <b>3</b> closes → local premium stretched → USD
+• z &lt; <b>+0.50</b> for <b>3</b> closes → premium gone → back to gold
+• between → no new trade, keep the prior state
+Cooldown of <b>30</b> observations between switches. Default state is GOLD.
 
 <b>LAYER 1 — gold or dollars?</b>
 <code>vol90</code> = 90-day volatility of mesghal returns.

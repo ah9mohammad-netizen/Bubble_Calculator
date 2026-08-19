@@ -21,6 +21,8 @@ DEFAULT_STATE = {
     "last_l1_date": None,
     "last_l2_date": None,
     "last_daily_report": None,
+    "z_state": "GOLD",
+    "last_z_date": None,
     "subscribers": [],
 }
 

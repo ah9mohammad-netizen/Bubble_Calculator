@@ -81,7 +81,7 @@ def evaluate(persist: bool = True):
     snap = datafeed.fetch_latest()
     if not snap.get("ok"):
         log.warning("incomplete snapshot: %s", snap.get("errors"))
-        return snap, None, store.load_state(), None, None
+        return snap, None, store.load_state(), None, None, {}
 
     if persist:
         store.upsert_price(snap["date"], snap.get("quarter"), snap.get("mesghal"),
@@ -94,12 +94,32 @@ def evaluate(persist: bool = True):
     bq, bm = S.intrinsic_bubbles(snap["quarter"], snap["mesghal"],
                                  snap.get("usd"), snap.get("spot"))
 
+    # ---- world-parity basis z-score ----
+    bas_series = []
+    for r in prices:
+        try:
+            sp = float(r["spot"]) if r.get("spot") else None
+            ur = float(r["usd"]) if r.get("usd") else None
+            mm = float(r["mesghal"]) if r.get("mesghal") else None
+        except (ValueError, TypeError):
+            sp = ur = mm = None
+        bas_series.append(S.basis(mm, sp, ur))
+    bas_today = S.basis(snap.get("mesghal"), snap.get("spot"), snap.get("usd"))
+    zval = S.basis_z(bas_series)
+    zstate, run_hi, run_lo, _ = S.z_decide(
+        [S.basis_z(bas_series[: i + 1]) for i in range(max(0, len(bas_series) - S.Z_PERSIST), len(bas_series))],
+        state=state.get("z_state", "GOLD"),
+        bars_since_z=bars_since(state.get("last_z_date"), prices),
+    )
+    extra = {"basis": bas_today, "z": zval, "z_state": zstate,
+             "run_hi": run_hi, "run_lo": run_lo}
+
     dec = S.decide(rp=rp, vol=vol,
                    current=state.get("position", "MESGHAL"),
                    prev_pref=state.get("last_pref", "MESGHAL"),
                    bars_since_l1=bars_since(state.get("last_l1_date"), prices),
                    bars_since_l2=bars_since(state.get("last_l2_date"), prices))
-    return snap, dec, state, bq, bm
+    return snap, dec, state, bq, bm, extra
 
 
 def apply_signal(snap, dec, state) -> bool:
@@ -132,12 +152,12 @@ def apply_signal(snap, dec, state) -> bool:
 
 # ───────────────────────── commands ─────────────────────────
 def cmd_status(chat):
-    snap, dec, state, bq, bm = evaluate()
+    snap, dec, state, bq, bm, extra = evaluate()
     if not dec:
         send("⚠️ Could not fetch prices right now.\n"
              f"<code>{', '.join(snap.get('errors') or ['unknown'])}</code>", chat)
         return
-    send(M.daily_report(snap, dec, state, bq, bm), chat)
+    send(M.daily_report(snap, dec, state, bq, bm, extra), chat)
 
 
 def cmd_price(chat):
@@ -155,7 +175,7 @@ def cmd_price(chat):
 
 
 def cmd_signal(chat):
-    snap, dec, state, *_ = evaluate()
+    snap, dec, state, bq, bm, extra = evaluate()
     if not dec:
         send("⚠️ Feed unavailable.", chat)
         return
@@ -308,7 +328,7 @@ def monitor():
              INTERVAL_MIN, REPORT_HOUR)
     while True:
         try:
-            snap, dec, state, bq, bm = evaluate()
+            snap, dec, state, bq, bm, extra = evaluate()
             if dec:
                 fired = apply_signal(snap, dec, state)
                 tehran = datetime.now(timezone.utc) + timedelta(hours=3, minutes=30)
@@ -316,7 +336,7 @@ def monitor():
                 st = store.load_state()
                 if (not fired and tehran.hour >= REPORT_HOUR
                         and st.get("last_daily_report") != today):
-                    broadcast(M.daily_report(snap, dec, st, bq, bm))
+                    broadcast(M.daily_report(snap, dec, st, bq, bm, extra))
                     st["last_daily_report"] = today
                     store.save_state(st)
         except Exception:

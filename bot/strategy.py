@@ -135,3 +135,84 @@ def round_trip_gain(rp_buy: float, rp_sell: float, cost: float = COST_PER_LEG) -
 
 # backwards-compatible alias
 vol45 = vol90
+
+# ─────────────── basis z-score (world-parity gate) ───────────────
+# FairValue = XAU/USD ÷ 31.1035 × USDIRR × grams  -> rial value of one mesghal
+# implied by the world gold price and the dollar. Basis is how far the local
+# mesghal trades from that. Positive = local gold expensive vs world parity.
+Z_WINDOW    = 75     # rolling observations for mean/stdev
+Z_ENTER_USD = 1.75   # basis z above this -> local premium stretched -> USD
+Z_EXIT_USD  = 0.50   # basis z below this -> premium gone -> back to GOLD
+Z_PERSIST   = 3      # consecutive observed closes required
+Z_COOLDOWN  = 30     # observations since the last z-transition
+
+
+def fair_value_mesghal(spot_usd_oz, usd_irr):
+    """Rial value of one مثقال implied by world gold + USD. None if inputs missing."""
+    if not spot_usd_oz or not usd_irr:
+        return None
+    return spot_usd_oz / OZ_G * usd_irr * MESGHAL_G
+
+
+def basis(mesghal, spot_usd_oz, usd_irr):
+    """Local premium/discount of مثقال vs world parity. Positive = expensive."""
+    fv = fair_value_mesghal(spot_usd_oz, usd_irr)
+    if not fv or not mesghal:
+        return None
+    return mesghal / fv - 1.0
+
+
+def basis_z(basis_series, window: int = Z_WINDOW):
+    """Rolling z-score of the latest basis. Needs `window` prior observations."""
+    s = [b for b in basis_series if b is not None]
+    if len(s) < window + 1:
+        return None
+    hist = s[-(window + 1):-1]          # prior window, excludes today
+    mean = sum(hist) / len(hist)
+    sd = st.pstdev(hist)
+    if sd == 0:
+        return None
+    return (s[-1] - mean) / sd
+
+
+def z_zone(z):
+    """Human label for where the z-score sits."""
+    if z is None:
+        return "n/a"
+    if z > Z_ENTER_USD:
+        return "STRETCHED"
+    if z < Z_EXIT_USD:
+        return "NORMAL"
+    return "ELEVATED"
+
+
+def z_decide(z_series, state="GOLD", bars_since_z=999):
+    """Apply the persistence + cooldown state machine.
+
+    Returns (new_state, run_hi, run_lo, fired). `state` is the caller's
+    previous z-gate state, NOT the portfolio position.
+    """
+    zs = [z for z in z_series if z is not None]
+    if not zs:
+        return state, 0, 0, False
+
+    run_hi = 0
+    for z in reversed(zs):
+        if z > Z_ENTER_USD:
+            run_hi += 1
+        else:
+            break
+    run_lo = 0
+    for z in reversed(zs):
+        if z < Z_EXIT_USD:
+            run_lo += 1
+        else:
+            break
+
+    fired = False
+    if state == "GOLD" and run_hi >= Z_PERSIST and bars_since_z >= Z_COOLDOWN:
+        state, fired = "USD", True
+    elif state == "USD" and run_lo >= Z_PERSIST and bars_since_z >= Z_COOLDOWN:
+        state, fired = "GOLD", True
+    return state, run_hi, run_lo, fired
+
