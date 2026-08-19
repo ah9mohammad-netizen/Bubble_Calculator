@@ -47,6 +47,64 @@ def init(seed_csv: Optional[Path] = None) -> None:
     if not STATE_JSON.exists():
         save_state(DEFAULT_STATE.copy())
 
+    # Volumes created before the `spot` column existed have no spot history,
+    # which silently kills the basis z-score (it needs 76 observations that
+    # carry mesghal + usd + spot together). Merge any missing values in from
+    # the seed on every boot. Idempotent: never overwrites a live value.
+    if seed_csv:
+        merge_seed_spot(seed_csv)
+
+
+def merge_seed_spot(seed_csv) -> int:
+    """Backfill missing `spot` values into prices.csv from the seed file.
+
+    Returns the number of rows repaired. Only fills holes — an existing
+    value is always kept.
+    """
+    seed_csv = Path(seed_csv)
+    if not seed_csv.exists() or not PRICES_CSV.exists():
+        return 0
+    try:
+        with seed_csv.open(newline="", encoding="utf-8") as f:
+            seed = {}
+            for r in csv.DictReader(f):
+                d = (r.get("date") or "").strip()
+                v = (r.get("spot") or "").strip()
+                if d and v:
+                    try:
+                        seed[d] = float(v)
+                    except ValueError:
+                        pass
+        if not seed:
+            return 0
+
+        rows = load_prices()
+        if not rows:
+            return 0
+        fixed = 0
+        for r in rows:
+            if r.get("spot") is None and r["date"] in seed:
+                r["spot"] = seed[r["date"]]
+                fixed += 1
+        if fixed:
+            with PRICES_CSV.open("w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=PRICE_COLS)
+                w.writeheader()
+                for r in rows:
+                    w.writerow({c: (r.get(c) if r.get(c) is not None else "")
+                                for c in PRICE_COLS})
+            log.info("merge_seed_spot: repaired %d rows of spot history", fixed)
+        return fixed
+    except Exception as e:
+        log.warning("merge_seed_spot failed: %s", e)
+        return 0
+
+
+def basis_obs_count() -> int:
+    """How many stored sessions carry mesghal + usd + spot together."""
+    return sum(1 for r in load_prices()
+               if r.get("mesghal") and r.get("usd") and r.get("spot"))
+
 
 def _fallback():
     global DATA_DIR, PRICES_CSV, SIGNALS_CSV, STATE_JSON

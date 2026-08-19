@@ -118,21 +118,34 @@ def daily_report(snap, dec, state, bq=None, bm=None, dec_extra=None) -> str:
         body.append("  calm=gold        wild=USD")
 
     # ---- world-parity basis z-score ----
-    z = dec_extra.get("z") if dec_extra else None
-    bas = dec_extra.get("basis") if dec_extra else None
-    zgate = (dec_extra or {}).get("z_state", "GOLD")
-    if bas is not None:
-        body.append("")
-        btxt = f"{bas*100:+5.1f}%"
-        body.append(f"  basis {btxt}      vs world parity")
-        if z is not None:
-            z_bar, z_tick = _gauge(z, -1.0, 3.0, S.Z_EXIT_USD, S.Z_ENTER_USD,
-                                   fmt=lambda v: f"{v:.2f}")
-            body.append(f"  z     {z:+5.2f}      {_zone_z(z)}")
-            body.append(f"  {z_bar}")
-            body.append(f"  {z_tick}")
-            body.append("  cheap vs world   rich vs world")
-            body.append(f"  gate: {zgate}")
+    ex = dec_extra or {}
+    z = ex.get("z")
+    bas = ex.get("basis")
+    zgate = ex.get("z_state", "GOLD")
+    body.append("")
+    if bas is None:
+        # No spot or no USD today -> can't even compute the basis.
+        body.append("  basis   n/a      no spot/USD quote")
+    else:
+        body.append(f"  basis {bas*100:+5.1f}%      vs world parity")
+
+    if z is not None:
+        z_bar, z_tick = _gauge(z, -1.0, 3.0, S.Z_EXIT_USD, S.Z_ENTER_USD,
+                               fmt=lambda v: f"{v:.2f}")
+        body.append(f"  z     {z:+5.2f}      {_zone_z(z)}")
+        body.append(f"  {z_bar}")
+        body.append(f"  {z_tick}")
+        body.append("  cheap vs world   rich vs world")
+        body.append(f"  gate: {zgate}")
+    else:
+        # Say WHY instead of silently dropping the section.
+        have = ex.get("basis_obs")
+        need = S.Z_WINDOW + 1
+        if have is None:
+            body.append("  z       n/a      warming up")
+        else:
+            body.append(f"  z       n/a      warming up {have}/{need}")
+        body.append("  needs 76 days of spot+USD+mesghal")
 
     L = []
     L.append("📊 <b>IRAN GOLD MONITOR</b>")
@@ -225,6 +238,7 @@ Holding dollars returned +1020% and still <b>lost</b> to inflation.
 /setpos quarter|mesghal|usd — sync it to reality
 /history — last 10 signals
 /backfill — repair price history
+/repair — restore spot history (fixes a missing z)
 /stats — storage info
 /help — this message
 

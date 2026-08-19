@@ -112,7 +112,8 @@ def evaluate(persist: bool = True):
         bars_since_z=bars_since(state.get("last_z_date"), prices),
     )
     extra = {"basis": bas_today, "z": zval, "z_state": zstate,
-             "run_hi": run_hi, "run_lo": run_lo}
+             "run_hi": run_hi, "run_lo": run_lo,
+             "basis_obs": sum(1 for b in bas_series if b is not None)}
 
     dec = S.decide(rp=rp, vol=vol,
                    current=state.get("position", "MESGHAL"),
@@ -239,7 +240,21 @@ def cmd_stats(chat):
         f"price rows <b>{s['prices']}</b>",
         f"range <code>{s['first']} → {s['last']}</code>",
         f"signals <b>{s['signals']}</b>",
-        f"position <b>{store.load_state().get('position')}</b>"]), chat)
+        f"position <b>{store.load_state().get('position')}</b>",
+        f"basis obs <b>{store.basis_obs_count()}</b>/{S.Z_WINDOW + 1} "
+        f"(needed for z)"]), chat)
+
+
+def cmd_repair(chat):
+    """Merge missing spot history from the bundled seed into the volume."""
+    n = store.merge_seed_spot(SEED)
+    have = store.basis_obs_count()
+    need = S.Z_WINDOW + 1
+    msg = [f"🔧 Repaired <b>{n}</b> rows of spot history.",
+           f"basis observations now <b>{have}</b>/{need}"]
+    msg.append("✅ z-score is live." if have >= need
+               else "⏳ Still warming up — run /backfill too.")
+    send("\n".join(msg), chat)
 
 
 def cmd_backfill(chat):
@@ -271,6 +286,7 @@ COMMANDS = {
     "/history": lambda c, a: cmd_history(c),
     "/stats": lambda c, a: cmd_stats(c),
     "/backfill": lambda c, a: cmd_backfill(c),
+    "/repair": lambda c, a: cmd_repair(c),
 }
 
 
