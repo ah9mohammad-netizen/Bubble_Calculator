@@ -1,0 +1,5 @@
+*.md
+!bot/README.md
+charts/
+data/
+.git/

@@ -286,11 +286,15 @@ def handle(update: dict) -> None:
 # ───────────────────────── loops ─────────────────────────
 def poller():
     offset = None
+    if os.getenv("ENABLE_COMMANDS", "1") not in ("1", "true", "True"):
+        log.info("command polling DISABLED (ENABLE_COMMANDS=0) - digest only")
+        return
     log.info("polling started")
     while True:
         try:
-            r = requests.get(f"{API}/getUpdates", timeout=40,
-                             params={"timeout": 30, "offset": offset})
+            lp = int(os.getenv("LONGPOLL_SEC", "50"))
+            r = requests.get(f"{API}/getUpdates", timeout=lp + 10,
+                             params={"timeout": lp, "offset": offset})
             for upd in r.json().get("result", []):
                 offset = upd["update_id"] + 1
                 handle(upd)
@@ -317,7 +321,12 @@ def monitor():
                     store.save_state(st)
         except Exception:
             log.exception("monitor cycle failed")
-        time.sleep(INTERVAL_MIN * 60)
+
+        # Sleep longer outside Tehran market hours - the board does not move
+        # overnight, so polling then just burns CPU-hours.
+        th = datetime.now(timezone.utc) + timedelta(hours=3, minutes=30)
+        quiet = th.hour >= 20 or th.hour < 8
+        time.sleep(INTERVAL_MIN * 60 * (4 if quiet else 1))
 
 
 class Health(BaseHTTPRequestHandler):

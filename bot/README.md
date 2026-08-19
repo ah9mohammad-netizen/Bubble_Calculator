@@ -158,3 +158,28 @@ release. When it crosses, the bot signals USD → ربع سکه.
   1m toman apart. Confirm which coin your dealer is quoting.
 - Screen prices are indicative, not executable. Costs assume **2%/leg**.
 - The bot **signals; it does not trade**. You execute.
+
+---
+
+## Railway cost control
+
+Railway bills **RAM-hours + CPU-hours**, not repository size. A always-on
+worker is the cost, not the files. Three knobs, all env vars:
+
+| variable | default | effect |
+|---|---|---|
+| `CHECK_INTERVAL_MIN` | 60 | Minutes between price checks. Set `120` to halve them. |
+| `LONGPOLL_SEC` | 50 | Telegram long-poll seconds. Higher = fewer reconnects = less CPU. |
+| `ENABLE_COMMANDS` | 1 | Set `0` to drop the command listener and receive only the daily digest. Removes one always-on thread. |
+
+The monitor now also **sleeps 4× longer outside 08:00–20:00 Tehran**, since the
+dealer board does not move overnight.
+
+**If you want the cheapest possible setup:** `CHECK_INTERVAL_MIN=240`,
+`ENABLE_COMMANDS=0`. The strategy trades about **6 times in 6.4 years** — it
+does not need minute-level monitoring.
+
+**Cheaper still:** the bot does not have to run 24/7 at all. Railway
+[cron schedules](https://docs.railway.com/reference/cron-jobs) can run it once
+a day; the process would live for seconds instead of hours. That needs a small
+refactor (run one cycle, then exit) — ask if you want it.

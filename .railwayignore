@@ -1,0 +1,9 @@
+# Railway only needs bot/ + requirements.txt to run the service.
+# Everything below is research output and is excluded from the build context.
+*.md
+!bot/README.md
+charts/
+data/
+*.py
+!bot/*.py
+.gitignore
