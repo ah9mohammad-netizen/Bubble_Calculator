@@ -1,0 +1,96 @@
+# Field mapping lives here, NOT in code.
+# Iranian feeds change their JSON shape without notice. When one breaks,
+# run  /probe <source>  in Telegram, look at the raw dump, fix the path here,
+# then /reload. No redeploy.
+# Paths are dot/bracket notation: "gold[0].price" or "metals.gold".
+
+sources:
+
+  brsapi_gold:
+    enabled: true
+    url: "https://BrsApi.ir/Api/Market/Gold_Currency.php"
+    params: {key: "${BRSAPI_KEY}"}
+    timeout: 20
+    # Response is {gold:[...], currency:[...], cryptocurrency:[...]}
+    # Each item has name/symbol/price/unit. We locate by matching `symbol`.
+    locate_by: symbol
+    fields:
+      usd_free:        {container: currency, match: "USD",            path: price, scale: 1}
+      gold18k_toman:   {container: gold,     match: "IR_GOLD_18K",    path: price, scale: 1}
+      coin_emami:      {container: gold,     match: "IR_COIN_EMAMI",  path: price, scale: 1}
+      xau_usd_ir:      {container: gold,     match: "XAUUSD",         path: price, scale: 1}
+    # brsapi quotes Iranian items in TOMAN by default. If yours returns rial,
+    # set scale: 0.1 above — derive.sanity_warnings() detects the 10x error
+    # against parity on the very first poll and tells you which line to fix.
+
+  brsapi_havaleh:
+    enabled: true
+    url: "https://BrsApi.ir/Api/Market/Gold_Currency.php"
+    params: {key: "${BRSAPI_KEY}"}
+    timeout: 20
+    locate_by: symbol
+    fields:
+      usd_havaleh:     {container: currency, match: "USD_HAVALEH", path: price, scale: 1}
+    optional: true   # not always published; the collector carries the last value forward
+
+  metals_dev:
+    enabled: true
+    url: "https://api.metals.dev/v1/latest"
+    params: {api_key: "${METALS_DEV_KEY}", currency: "USD", unit: "toz"}
+    timeout: 20
+    fields:
+      xau_usd:         {path: "metals.gold"}
+      xag_usd:         {path: "metals.silver"}
+      copper_usd_toz:  {path: "metals.copper"}
+
+  coingecko:
+    enabled: true
+    url: "https://api.coingecko.com/api/v3/simple/price"
+    params: {ids: "bitcoin", vs_currencies: "usd"}
+    timeout: 20
+    fields:
+      btc_usd:         {path: "bitcoin.usd"}
+
+  # Tehran Stock Exchange — fund price + NAV, direct from TSETMC's JSON API.
+  # NAV is the whole reason this source exists: no NAV, no premium/discount,
+  # and the wrapper gates in rules.yaml have nothing to test.
+  #
+  # Instrument codes are resolved by symbol search on first use and cached.
+  # If the search picks the wrong instrument (TSETMC lists delisted
+  # look-alikes), pin the code yourself under `codes:` — that skips the
+  # search entirely and is the more reliable setup once you know the numbers.
+  #
+  # VERIFY THIS SOURCE FIRST after enabling the desk: `/probe tse`. TSETMC is
+  # the single most likely thing to be blocked from a non-Iranian IP, and its
+  # response shape is the least stable of the four.
+  tse:
+    enabled: true
+    timeout: 25
+    referer: "https://www.tsetmc.com/"
+    symbols:
+      tala:   "طلا"
+      plata:  "پلاتا"
+      ahrom:  "اهرم"
+    codes: {}          # e.g. {tala: "46700660505281786"} once verified via /probe
+    search_url:  "https://cdn.tsetmc.com/api/Instrument/GetInstrumentSearch/{symbol}"
+    search_path: "instrumentSearch"
+    search_code_key: "insCode"
+    search_symbol_key: "lVal18AFC"
+    price_url:   "https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceInfo/{code}"
+    price_path:  "closingPriceInfo.pDrCotVal"
+    prev_path:   "closingPriceInfo.priceYesterday"
+    nav_url:     "https://cdn.tsetmc.com/api/Fund/GetETFByInsCode/{code}"
+    nav_path:    "etf.estimatedNAV"
+    # TEDPIX. 32097828799138957 is the index instrument code.
+    index_url:   "https://cdn.tsetmc.com/api/Index/GetIndexB1LastDay/32097828799138957"
+    index_path:  "indexB1LastDay.lastIndexValueInDay"
+
+  # Macro values the bot cannot scrape reliably. Set with /set, persisted in DB.
+  manual:
+    iran_cpi_yoy: 87.9
+    iran_oil_exports_bpd: 300000
+
+# Optional relay for when Railway's IP is blocked by Iranian hosts.
+# Run relay.py on any box inside Iran; point IRAN_RELAY_URL at it.
+relay:
+  applies_to: [brsapi_gold, brsapi_havaleh, tse]

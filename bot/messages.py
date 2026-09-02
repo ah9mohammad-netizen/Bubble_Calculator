@@ -244,6 +244,15 @@ Holding dollars returned +1020% and still <b>lost</b> to inflation.
 /stats — storage info
 /help — this message
 
+<b>━━ METALS DESK ━━</b>
+Optional add-on, off unless <code>ENABLE_DESK=1</code>. Watches the other
+engine — import parity, the fund wrappers, world spot — against 33 rules.
+/now — full desk snapshot   /parity — parity, step by step
+/gates — handbook entry gates   /ladder — ladder rungs
+/funds — طلا · پلاتا · اهرم premium vs NAV
+/rules — every rule vs its threshold   /fires — recent desk signals
+/health — data-source status   /desk — the desk's own help
+
 <b>━━ REALITY CHECKS ━━</b>
 • 6 trades in 6.4 years. It is a patient strategy.
 • Layer 1 fired 3 times only. It is the weakest part.

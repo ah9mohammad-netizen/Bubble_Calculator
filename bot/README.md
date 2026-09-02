@@ -91,6 +91,10 @@ you actually hold.
 | `/stats` | Rows stored, volume path |
 | `/help` | Strategy, evidence, backtest numbers |
 
+Plus the optional **Metals Desk** commands (`/now`, `/parity`, `/gates`,
+`/ladder`, `/funds`, `/rules`, `/fires`, `/health`, …) when it is switched on.
+See [`desk/README.md`](desk/README.md).
+
 **`/setpos` matters.** The bot starts assuming you hold مثقال. Set it to your
 real position on day one or the first signal will be wrong.
 
@@ -161,6 +165,25 @@ release. When it crosses, the bot signals USD → ربع سکه.
 
 ---
 
+## Optional: the Metals Desk
+
+A second, independent engine lives in [`bot/desk/`](desk/README.md): import
+parity for 18k gold, the طلا / پلاتا / اهرم wrappers against their NAV, world
+spot, and 33 declarative handbook rules with cooldowns and quiet hours.
+
+**It is off unless you set `ENABLE_DESK=1`.** With the variable unset the bot
+above registers no extra commands, starts no extra thread and opens no extra
+connection — the only difference is one line in `/stats` saying `desk off`.
+
+When on, it runs on its own thread and its own 15-minute clock, deliberately
+separate from the strategy `monitor()` loop, so a slow or blocked Iranian feed
+can never delay a trade signal. It stores to `desk.db` on the same volume.
+
+Read `desk/README.md` before enabling — in particular the *Blocked IPs*
+section, because Railway's US/EU address is often refused by Iranian hosts.
+
+---
+
 ## Railway cost control
 
 Railway bills **RAM-hours + CPU-hours**, not repository size. A always-on
@@ -171,6 +194,8 @@ worker is the cost, not the files. Three knobs, all env vars:
 | `CHECK_INTERVAL_MIN` | 60 | Minutes between price checks. Set `120` to halve them. |
 | `LONGPOLL_SEC` | 50 | Telegram long-poll seconds. Higher = fewer reconnects = less CPU. |
 | `ENABLE_COMMANDS` | 1 | Set `0` to drop the command listener and receive only the daily digest. Removes one always-on thread. |
+| `ENABLE_DESK` | 0 | Set `1` to add the Metals Desk. Costs one more thread and ~4 HTTP calls per `DESK_POLL_SECONDS`. |
+| `DESK_POLL_SECONDS` | 900 | Only read when the desk is on. Raise it to cut the desk's share of CPU. |
 
 The monitor now also **sleeps 4× longer outside 08:00–20:00 Tehran**, since the
 dealer board does not move overnight.
