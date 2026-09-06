@@ -15,6 +15,7 @@ from .models import Snapshot
 from .derive import derive, sanity_warnings
 from .http_source import fetch_http_source
 from .tse import fetch_tse
+from .tgju import fetch_tgju
 
 log = logging.getLogger("desk.collector")
 LAST_RAW: dict[str, str] = {}          # for /probe
@@ -22,7 +23,8 @@ LAST_RAW: dict[str, str] = {}          # for /probe
 # Iranian fields that are allowed to go missing for a poll or two. They are
 # carried forward from the last good snapshot rather than dropped, because a
 # hole in NAV reads downstream as "no premium" instead of "unknown premium".
-CARRY_FORWARD = ("usd_havaleh", "tala_nav", "plata_nav", "ahrom_nav", "tedpix")
+CARRY_FORWARD = ("usd_havaleh", "tala_nav", "plata_nav", "ahrom_nav", "tedpix",
+                 "tala_price", "plata_price", "ahrom_price")
 
 
 class Collector:
@@ -38,6 +40,8 @@ class Collector:
         self.relay_targets = (cfg.get("relay") or {}).get("applies_to", [])
 
     def _run(self, name: str, spec: dict):
+        if name == "tgju":
+            return fetch_tgju(spec, self.store, name in self.relay_targets)
         if name == "tse":
             return fetch_tse(spec, self.store, name in self.relay_targets)
         return fetch_http_source(name, spec, self.relay_targets)

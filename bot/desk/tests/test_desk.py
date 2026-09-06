@@ -173,3 +173,90 @@ def test_every_renderer_survives_an_empty_snapshot():
     for block in (snapshot_block, gates_block, ladder_block):
         assert isinstance(block({}), str)
         assert isinstance(block(derive(LIVE)), str)
+
+
+# ───────────────────────── the tgju fallback ─────────────────────────
+# brsapi and TSETMC stopped answering from Railway. tgju is the one Iranian
+# feed with production evidence behind it (bot/datafeed.py has read this same
+# endpoint from this same service since launch), so Engine 1 now rests on it.
+from desk.derive import MESGHAL_FINE_G
+from desk.tgju import _latest, _spread_days
+
+# A real summary-table payload shape: [open, low, high, close, chg, chg%, greg, jalali]
+TGJU_ROWS = [
+    ["960,000,000", "958,000,000", "962,500,000", "960,360,500", "1,200,000",
+     "0.13", "2026-09-02", "1405/06/11"],
+    ["959,000,000", "957,000,000", "961,000,000", "959,160,500", "900,000",
+     "0.09", "2026-09-01", "1405/06/10"],
+]
+
+
+def test_tgju_takes_the_newest_close_regardless_of_row_order():
+    close, date = _latest(TGJU_ROWS, 3, 6)
+    assert (close, date) == (960360500.0, "2026-09-02")
+    # tgju has served the other order before; sorting must win, not position
+    close2, date2 = _latest(list(reversed(TGJU_ROWS)), 3, 6)
+    assert (close2, date2) == (960360500.0, "2026-09-02")
+
+
+def test_tgju_ignores_short_and_undated_rows():
+    rows = [["x"], ["1", "2", "3", "4", "5", "6", "not-a-date", "j"]] + TGJU_ROWS
+    assert _latest(rows, 3, 6)[1] == "2026-09-02"
+    assert _latest([["1"]], 3, 6) == (None, None)
+
+
+def test_quote_spread_flags_mismatched_sessions():
+    assert _spread_days(["2026-09-02", "2026-09-02"]) == 0
+    assert _spread_days(["2026-08-30", "2026-09-02"]) == 3
+    assert _spread_days([]) is None
+
+
+def test_rial_scaling_is_what_sources_yaml_says():
+    """tgju quotes Iranian instruments in rial; the desk works in toman."""
+    tgju = load_yaml("sources.yaml")["sources"]["tgju"]
+    for name in ("usd_free", "mesghal_toman", "quarter_toman", "gold18k_toman"):
+        assert tgju["fields"][name]["scale"] == 0.1, name
+    for name in ("xau_usd", "xag_usd"):          # already USD, never scaled
+        assert tgju["fields"][name].get("scale", 1) == 1, name
+
+
+def test_engine_one_survives_on_tgju_alone():
+    """The whole point of the fallback: with brsapi and TSETMC dark, a tgju
+    snapshot must still produce parity, the gap, grams/billion and a ladder."""
+    mesghal_toman = 22_170_000 * MESGHAL_FINE_G / 0.75      # the handbook's 18k
+    v = derive({"usd_free": 211100, "mesghal_toman": mesghal_toman, "xau_usd": 4430})
+    assert abs(v["gold18k_toman"] - 22_170_000) < 1
+    assert abs(v["gold_parity_toman"] - 22_549_866) < 5_000
+    assert abs(v["gold_parity_gap_pct"] - (-1.68)) < 0.05    # matches brsapi's answer
+    assert abs(v["grams_per_billion"] - 45.1) < 0.2
+    assert v["ladder_rungs_live"] == 1
+
+
+def test_a_direct_18k_feed_beats_the_derivation():
+    v = derive({"gold18k_toman": 20_000_000, "mesghal_toman": 96_036_050})
+    assert v["gold18k_toman"] == 20_000_000
+    assert "gold18k_is_derived" not in v
+
+
+def test_derived_18k_and_stale_quotes_announce_themselves():
+    v = derive({"usd_free": 211100, "mesghal_toman": 96_036_050, "xau_usd": 4430,
+                "tgju_quote_spread_days": 3.0})
+    w = " ".join(sanity_warnings(v))
+    assert "derived from" in w and "span 3 days" in w
+
+
+def test_disabled_sources_keep_a_usable_mapping():
+    """brsapi and tse are off, not deleted — re-enabling must not need edits."""
+    src = load_yaml("sources.yaml")["sources"]
+    for name in ("brsapi_gold", "brsapi_havaleh", "tse"):
+        assert src[name]["enabled"] is False, name
+    assert src["tgju"]["enabled"] is True
+    assert src["brsapi_gold"]["fields"]["gold18k_toman"]["container"] == "gold"
+    assert set(src["tse"]["symbols"]) == {"tala", "plata", "ahrom"}
+
+
+def test_empty_custom_slot_fails_with_a_readable_message():
+    import pytest
+    from desk.http_source import fetch_http_source
+    with pytest.raises(ValueError, match="no `url` set"):
+        fetch_http_source("custom_a", {"url": "", "fields": {}}, [])

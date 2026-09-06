@@ -179,8 +179,11 @@ When on, it runs on its own thread and its own 15-minute clock, deliberately
 separate from the strategy `monitor()` loop, so a slow or blocked Iranian feed
 can never delay a trade signal. It stores to `desk.db` on the same volume.
 
-Read `desk/README.md` before enabling — in particular the *Blocked IPs*
-section, because Railway's US/EU address is often refused by Iranian hosts.
+Railway's US/EU address is refused by brsapi and TSETMC, so the desk runs on
+**tgju** — the same feed `datafeed.py` already uses here — plus metals.dev and
+coingecko. That covers parity, the gap, grams per billion and the ladder. Fund
+NAV and USD حواله are dark until TSETMC/brsapi come back or you supply them
+with `/set`. Read `desk/README.md` > *Data sources* before enabling.
 
 ---
 

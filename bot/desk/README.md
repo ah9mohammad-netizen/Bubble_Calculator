@@ -34,7 +34,7 @@ and builds no desk object. The only visible traces are one extra line in
 |---|---|
 | Engine 1 — toman | USD free, USD حواله, spread, 18k gold, **import parity + gap**, grams per billion |
 | Engine 2 — spot | XAU, XAG, copper $/lb, BTC, gold/silver ratio |
-| Wrappers | طلا price + NAV + bubble · پلاتا price + NAV + premium · اهرم price + NAV + discount · TEDPIX |
+| Wrappers | طلا price + NAV + bubble · پلاتا price + NAV + premium · اهرم price + NAV + discount · TEDPIX — *needs TSETMC, currently dark; see Data sources* |
 | Macro | Iran CPI y/y, oil exports (manual, set via `/set`) |
 | Derived | ladder state, limit-day detection, sanity/unit checks |
 
@@ -47,8 +47,8 @@ read −18.3% and the next session gold moved +20.5%.
 ## Turning it on
 
 1. Railway → the bot service → **Variables** → add `ENABLE_DESK=1`.
-2. Add `BRSAPI_KEY` and `METALS_DEV_KEY` (both free tiers; without them
-   those two sources return errors and `/health` shows them red).
+2. Add `METALS_DEV_KEY` (free tier). `BRSAPI_KEY` is not needed while brsapi
+   is disabled. tgju and coingecko need no key at all.
 3. Redeploy, then run **`/health`** in Telegram. That is the whole checklist:
    green sources are working, red ones need `/probe`.
 
@@ -92,42 +92,104 @@ did, the existing command wins and the desk logs that it was skipped.
 
 ## Data sources
 
-| Source | What | Key | Notes |
-|---|---|---|---|
-| `brsapi.ir` | USD toman, 18k gold, coins | free, key on request | Iranian host |
-| `metals.dev` | XAU, XAG, copper | free tier | |
-| `coingecko` | BTC | none | |
-| `cdn.tsetmc.com` | طلا / پلاتا / اهرم price **and NAV**, TEDPIX | none | Iranian host |
+**brsapi and TSETMC do not answer from Railway.** Both are disabled in
+`config/sources.yaml` — kept, not deleted, so re-enabling is a one-word edit
+if you stand up the relay. tgju carries Engine 1 in their place.
 
-NAV is what makes premium/discount computable, and premium/discount is what
-the wrapper gates are written against. If NAV goes missing the desk carries
-the last value forward and says so in `/health` rather than silently
-reporting a wrong premium.
+| Source | What | Status |
+|---|---|---|
+| `api.tgju.org` | USD free, مثقال, ربع سکه, XAU — plus 18k, سکه امامی, XAG to confirm | **working** — `bot/datafeed.py` has read this same endpoint from this same service since launch |
+| `metals.dev` | XAU, XAG, copper | works; free-tier key |
+| `coingecko` | BTC | works; no key |
+| `brsapi.ir` | USD حواله, direct 18k | **disabled** — not answering |
+| `cdn.tsetmc.com` | fund price + **NAV**, TEDPIX | **disabled** — not answering |
 
-**Verify `tse` first.** Its instrument codes are resolved by symbol search on
-first use and cached; TSETMC lists delisted look-alikes, so once `/probe tse`
-shows you the real codes, pin them under `codes:` in `sources.yaml`. TSETMC
-is also the source whose response shape changes most often.
+### Why tgju is enough for Engine 1
 
-### ⚠️ Blocked IPs — read this before enabling
+The handbook is built on the 18k gram price: parity, the gap, grams per
+billion and every ladder rung reference it. brsapi served that directly. tgju
+may serve it as `geram18` — unconfirmed from this deployment — but it does not
+have to, because **مثقال is the same gold**: 4.6083 g at عیار ۷۰۵ = 3.2489 g
+fine, the same constant `strategy.py` uses.
 
-**Railway runs in the US/EU. Iranian hosts frequently block or rate-limit
-foreign IPs, and TSETMC is the most likely to fail.** Three ways to handle
-it, in order:
+```
+toman/g 24k = mesghal / 3.2489        18k = × 0.750
+```
 
-1. **Try direct first.** Enable, then run `/health`. If `brsapi_gold` and
-   `tse` are green, you are done.
-2. **Relay.** `relay.py` is a small FastAPI proxy. Run it on any always-on
-   box inside Iran, set `IRAN_RELAY_URL` and `IRAN_RELAY_TOKEN` on Railway.
-   Only the sources listed under `relay.applies_to` in `config/sources.yaml`
-   route through it. It exposes `/proxy?name=` for single-URL sources and
-   `/get?url=` for TSETMC, which needs three; `/get` refuses any host that
-   does not appear in `sources.yaml`, so it cannot be used as an open proxy.
-   `relay.py` is never imported by the bot and its dependencies (fastapi,
-   uvicorn) are not in `requirements.txt` — it runs on your machine.
-3. **Degrade.** With Iranian sources down, world-spot rules still fire and
-   Iranian ones simply do not evaluate. `/health` tells you which. The desk
-   warns once an hour rather than pretending the data is fresh.
+`derive.py` applies that whenever no direct 18k feed answers, and
+`/health` says the value is derived rather than passing it off as a dealer
+print. Fed the handbook's own مثقال quote it reproduces brsapi's answer
+exactly — 22,170,000 toman/g, parity 22,549,866, gap −1.68%, 45.1 g per
+billion. `test_engine_one_survives_on_tgju_alone` pins that.
+
+So on tgju alone you keep: parity and the gap, the FX side of Engine 1, grams
+per billion, the full ladder, and world spot.
+
+### What is dark until a source comes back
+
+| Missing | Costs you |
+|---|---|
+| `usd_havaleh` (was brsapi) | `fx_spread_pct` → the spread rules, **including the `fx_spread_converging` KILL criterion** |
+| fund NAV + price (was TSETMC) | طلا bubble, پلاتا premium, اهرم discount → the whole `funds` group and the wrapper gates in `/gates` |
+| TEDPIX (was TSETMC) | the index rules |
+
+`/health` reports these as absent rather than reporting a premium of zero.
+
+**The stopgap is `/set`.** Manual values feed the snapshot exactly like a
+scraped field, persist in `desk.db`, and are carried forward between updates:
+
+```
+/set usd_havaleh 157480
+/set tala_price 1556199    /set tala_nav 1578000
+/set plata_price 12150     /set plata_nav 11667
+/set ahrom_price 57106     /set ahrom_nav 73496
+```
+
+That is about a minute a day and it re-arms the kill criterion, which is the
+one rule you least want dark.
+
+### Adding a source you have verified — tradersarena, iranjib, anything else
+
+`custom_a` and `custom_b` are empty slots in `sources.yaml`, disabled and
+ready. **No code change is needed** — any JSON endpoint can be mapped there.
+
+I could not confirm a public JSON API for tradersarena or iranjib from this
+deployment, and a guessed URL fails silently rather than loudly, so the slots
+are left for you to point at something you have actually seen respond:
+
+1. Open the site, watch the network tab, find the request that returns the
+   numbers as JSON. Copy its URL into `url:`.
+2. `/reload`, then `/probe custom_a` to dump the raw response.
+3. Read the dump, set `path:` for each field (dot/bracket notation), add
+   `scale: 0.1` if the site quotes rial, `/reload` again.
+
+Field names must be ones `derive.py` knows: `usd_free`, `usd_havaleh`,
+`gold18k_toman`, `mesghal_toman`, `xau_usd`, `xag_usd`, `tala_price`,
+`tala_nav`, `plata_price`, `plata_nav`, `ahrom_price`, `ahrom_nav`, `tedpix`.
+
+### Source order
+
+The collector merges in file order, and a later source overwrites an earlier
+one **only for fields it actually returned**. So the proven-but-coarse feed
+goes first and the better-but-flakier one after: when `metals.dev` answers it
+wins on spot, and when it does not, tgju's `ons` is already in place.
+
+### Units — the one that bites
+
+tgju quotes Iranian instruments in **rial**; the desk works in **toman**.
+Every Iranian tgju field carries `scale: 0.1`. Get it wrong and you have a
+clean factor of ten, which `derive.sanity_warnings()` catches against parity
+on the first poll and names the line to fix — but catching it is a worse
+outcome than setting it right.
+
+### Same-session pairing
+
+Parity pairs a gold quote against a dollar quote. tgju updates its indicators
+at different times, so the naive "latest row of each" can pair a two-day-old
+18k print against today's dollar and call the calendar a discount. This bot
+has already been burned by exactly that once, with ربع سکه against مثقال. The
+tgju source now measures the spread between the session dates behind the
+quotes it paired and warns when they disagree.
 
 ### When a feed changes shape
 
@@ -135,7 +197,7 @@ Iranian APIs change their JSON without notice. Field mapping lives in
 `config/sources.yaml`, not in code:
 
 ```
-/probe brsapi_gold     # dump the raw response
+/probe tgju            # dump the raw response
 # edit the path in config/sources.yaml
 /reload                # re-read, no redeploy
 ```
@@ -178,8 +240,11 @@ re-reminding about, and let `cooldown` control the nagging.
 python -m pytest bot/desk/tests -q      # 22 tests, no network needed
 ```
 
-Twelve are the upstream handbook tests, unchanged. Ten more cover what this
-port changed: the Jalali clock that replaced `jdatetime`, the `requests`
+Twelve are the upstream handbook tests, unchanged. Nine cover the tgju
+fallback — rial scaling, newest-row selection whichever order tgju serves,
+mismatched-session detection, and the promise that Engine 1 reproduces
+brsapi's parity answer from مثقال alone. Ten more cover what the port
+changed: the Jalali clock that replaced `jdatetime`, the `requests`
 field extraction that replaced `httpx`, Persian-digit parsing, and the
 promise that every renderer survives a completely empty snapshot — because a
 blocked Iranian IP is the expected case, not the exceptional one.

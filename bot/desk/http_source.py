@@ -113,6 +113,8 @@ def extract(data: Any, spec: dict) -> dict[str, float]:
 def fetch_http_source(name: str, spec: dict,
                       relay_targets: list[str]) -> tuple[dict, str]:
     """Returns (values, raw_text_for_probe). Raises on transport failure."""
+    if not spec.get("url"):
+        raise ValueError("no `url` set for this source — fill it in sources.yaml")
     url = _url_for(name, spec, relay_targets)
     headers = {}
     if settings.relay_token and settings.relay_url and name in relay_targets:

@@ -1,38 +1,93 @@
 # Field mapping lives here, NOT in code.
-# Iranian feeds change their JSON shape without notice. When one breaks,
-# run  /probe <source>  in Telegram, look at the raw dump, fix the path here,
-# then /reload. No redeploy.
+# Iranian feeds change their JSON shape — and their willingness to answer a
+# foreign IP — without notice. When one breaks:
+#     /probe <source>     dump the raw response
+#     edit the path here
+#     /reload             re-read, no redeploy
 # Paths are dot/bracket notation: "gold[0].price" or "metals.gold".
+#
+# ── UNITS ────────────────────────────────────────────────────────────────
+# The desk works in TOMAN. tgju quotes Iranian instruments in RIAL, so every
+# Iranian tgju field carries scale: 0.1. A wrong scale is a clean factor of
+# ten; derive.sanity_warnings() catches it against parity on the first poll
+# and names the line to fix.
+#
+# ── SOURCE ORDER MATTERS ─────────────────────────────────────────────────
+# The collector merges sources in the order below, and a later source
+# overwrites an earlier one only for the fields it actually returned. So the
+# proven-but-coarse feed goes first and the better-but-flakier one goes after
+# it: when metals.dev answers it wins on spot, and when it does not, tgju's
+# `ons` is already in place.
 
 sources:
 
-  brsapi_gold:
+  # ── tgju: the Iranian feed with production evidence ──────────────────────
+  # bot/datafeed.py has been reading this endpoint from this Railway service
+  # since the bot went live. When brsapi and TSETMC stopped answering, this
+  # is what kept Engine 1 alive. Symbols `price_dollar_rl`, `mesghal`, `rob`
+  # and `ons` are the four the strategy bot itself uses in production; the
+  # rest are marked below and are worth confirming with /probe tgju.
+  tgju:
     enabled: true
+    url: "https://api.tgju.org/v1/market/indicator/summary-table-data/{symbol}"
+    timeout: 15
+    rows: 5
+    close_index: 3       # [open, low, high, CLOSE, chg, chg%, greg, jalali]
+    date_index: 6
+    fields:
+      # proven in production by bot/datafeed.py
+      usd_free:        {symbol: price_dollar_rl, scale: 0.1}
+      mesghal_toman:   {symbol: mesghal,         scale: 0.1}
+      quarter_toman:   {symbol: rob,             scale: 0.1}
+      # `ons` is XAU in USD, not rial — no scaling, and no session date that
+      # needs to line up with the Tehran board, so it is left out of the
+      # same-session spread check.
+      xau_usd:         {symbol: ons,             scale: 1, dated: false}
+      # NOT yet confirmed from this deployment — run `/probe tgju` and check
+      # each one resolved. Delete any line that comes back empty; a missing
+      # field costs you the rules that need it and nothing else.
+      gold18k_toman:   {symbol: geram18,         scale: 0.1}
+      coin_emami:      {symbol: sekee,           scale: 0.1}
+      xag_usd:         {symbol: silver,          scale: 1, dated: false}
+    # If `geram18` does not resolve, derive.py reconstructs gold18k_toman from
+    # `mesghal` (3.2489 g of fine gold at عیار ۷۰۵, the same constant the
+    # strategy engine uses) and flags it in /health as derived. Engine 1 —
+    # parity, the gap, grams per billion, the whole ladder — stays live either
+    # way. That is why `mesghal` is not optional.
+    #
+    # usd_havaleh has no confirmed tgju slug, so the FX-spread rules (including
+    # the `fx_spread_converging` KILL criterion) cannot evaluate without it.
+    # Until one is found:  /set usd_havaleh 157480   — persisted, and it feeds
+    # the snapshot exactly like a scraped field would.
+
+  # ── brsapi: DISABLED — not answering from Railway ────────────────────────
+  # Kept, not deleted: the mapping is correct and this is the only source that
+  # served usd_havaleh and a direct 18k print. Re-enable if you stand up the
+  # relay (see README > Blocked IPs), which is what it would take.
+  brsapi_gold:
+    enabled: false
     url: "https://BrsApi.ir/Api/Market/Gold_Currency.php"
     params: {key: "${BRSAPI_KEY}"}
     timeout: 20
-    # Response is {gold:[...], currency:[...], cryptocurrency:[...]}
-    # Each item has name/symbol/price/unit. We locate by matching `symbol`.
     locate_by: symbol
     fields:
       usd_free:        {container: currency, match: "USD",            path: price, scale: 1}
       gold18k_toman:   {container: gold,     match: "IR_GOLD_18K",    path: price, scale: 1}
       coin_emami:      {container: gold,     match: "IR_COIN_EMAMI",  path: price, scale: 1}
       xau_usd_ir:      {container: gold,     match: "XAUUSD",         path: price, scale: 1}
-    # brsapi quotes Iranian items in TOMAN by default. If yours returns rial,
-    # set scale: 0.1 above — derive.sanity_warnings() detects the 10x error
-    # against parity on the very first poll and tells you which line to fix.
 
   brsapi_havaleh:
-    enabled: true
+    enabled: false
     url: "https://BrsApi.ir/Api/Market/Gold_Currency.php"
     params: {key: "${BRSAPI_KEY}"}
     timeout: 20
     locate_by: symbol
     fields:
       usd_havaleh:     {container: currency, match: "USD_HAVALEH", path: price, scale: 1}
-    optional: true   # not always published; the collector carries the last value forward
 
+  # ── world spot: not Iranian, not blocked ─────────────────────────────────
+  # Placed after tgju so a live metals.dev wins on xau/xag and tgju's `ons`
+  # covers the gap when it does not answer.
   metals_dev:
     enabled: true
     url: "https://api.metals.dev/v1/latest"
@@ -51,27 +106,28 @@ sources:
     fields:
       btc_usd:         {path: "bitcoin.usd"}
 
-  # Tehran Stock Exchange — fund price + NAV, direct from TSETMC's JSON API.
-  # NAV is the whole reason this source exists: no NAV, no premium/discount,
-  # and the wrapper gates in rules.yaml have nothing to test.
-  #
-  # Instrument codes are resolved by symbol search on first use and cached.
-  # If the search picks the wrong instrument (TSETMC lists delisted
-  # look-alikes), pin the code yourself under `codes:` — that skips the
-  # search entirely and is the more reliable setup once you know the numbers.
-  #
-  # VERIFY THIS SOURCE FIRST after enabling the desk: `/probe tse`. TSETMC is
-  # the single most likely thing to be blocked from a non-Iranian IP, and its
-  # response shape is the least stable of the four.
+  # ── TSETMC: DISABLED — not answering from Railway ────────────────────────
+  # This is the only source of fund NAV, so with it down the wrapper gates
+  # (طلا bubble, پلاتا premium, اهرم discount) and every rule in the `funds`
+  # group cannot evaluate. /health says so rather than reporting a premium of
+  # zero. Two ways back:
+  #   1. the relay (README > Blocked IPs) — `tse` is already in relay.applies_to
+  #   2. feed the four numbers by hand, which is what the desk's manual values
+  #      are for and takes about a minute a day:
+  #        /set tala_price 1556199    /set tala_nav 1578000
+  #        /set plata_price 12150     /set plata_nav 11667
+  #        /set ahrom_price 57106     /set ahrom_nav 73496
+  #      derive() computes the premiums from those exactly as it would from a
+  #      live feed, and the collector carries them forward between updates.
   tse:
-    enabled: true
+    enabled: false
     timeout: 25
     referer: "https://www.tsetmc.com/"
     symbols:
       tala:   "طلا"
       plata:  "پلاتا"
       ahrom:  "اهرم"
-    codes: {}          # e.g. {tala: "46700660505281786"} once verified via /probe
+    codes: {}          # pin insCodes here once /probe tse shows the real ones
     search_url:  "https://cdn.tsetmc.com/api/Instrument/GetInstrumentSearch/{symbol}"
     search_path: "instrumentSearch"
     search_code_key: "insCode"
@@ -81,9 +137,34 @@ sources:
     prev_path:   "closingPriceInfo.priceYesterday"
     nav_url:     "https://cdn.tsetmc.com/api/Fund/GetETFByInsCode/{code}"
     nav_path:    "etf.estimatedNAV"
-    # TEDPIX. 32097828799138957 is the index instrument code.
     index_url:   "https://cdn.tsetmc.com/api/Index/GetIndexB1LastDay/32097828799138957"
     index_path:  "indexB1LastDay.lastIndexValueInDay"
+
+  # ── slots for a source you have verified yourself ────────────────────────
+  # tradersarena and iranjib were asked about. Neither publishes a JSON API
+  # this deployment has been able to reach and confirm, so rather than commit
+  # a guessed URL that would fail silently, here are the slots ready to fill.
+  # No code change is needed — enable, point, /reload.
+  #
+  # To fill one: open the site's network tab, find the request that returns
+  # the numbers as JSON, put its URL below, then:
+  #     /reload  ->  /probe custom_a  ->  read the dump  ->  set the paths
+  # `path` is dot/bracket notation into the response. `scale: 0.1` if the
+  # site quotes rial. Field names must be ones derive.py knows — usd_free,
+  # usd_havaleh, gold18k_toman, mesghal_toman, xau_usd, xag_usd, tala_price,
+  # tala_nav, plata_price, plata_nav, ahrom_price, ahrom_nav, tedpix.
+  custom_a:
+    enabled: false
+    url: ""
+    timeout: 20
+    fields: {}
+    #  usd_havaleh: {path: "some.path.here", scale: 0.1}
+
+  custom_b:
+    enabled: false
+    url: ""
+    timeout: 20
+    fields: {}
 
   # Macro values the bot cannot scrape reliably. Set with /set, persisted in DB.
   manual:
@@ -92,5 +173,6 @@ sources:
 
 # Optional relay for when Railway's IP is blocked by Iranian hosts.
 # Run relay.py on any box inside Iran; point IRAN_RELAY_URL at it.
+# tgju answers directly today, but route it too if that ever changes.
 relay:
-  applies_to: [brsapi_gold, brsapi_havaleh, tse]
+  applies_to: [brsapi_gold, brsapi_havaleh, tse, tgju]

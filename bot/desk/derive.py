@@ -10,6 +10,9 @@ log = logging.getLogger(__name__)
 TROY_OZ_G = 31.1035
 K18 = 0.750           # 18 karat purity
 TOZ_PER_LB = 14.5833333     # troy ounces in one pound
+# مثقال آب‌شده: 4.6083 g at عیار ۷۰۵ = 3.2489 g of fine gold. Same constant the
+# strategy engine uses (strategy.MESGHAL_G) — the two must not drift apart.
+MESGHAL_FINE_G = 4.6083 * 0.705
 
 
 def _pct(a: float, b: float) -> float:
@@ -24,6 +27,16 @@ def derive(v: dict) -> dict:
     # 1 lb = 453.59237 g = 14.58333 troy oz  ->  $/lb = $/toz * 14.58333
     if out.get("copper_usd_lb") is None and out.get("copper_usd_toz") is not None:
         out["copper_usd_lb"] = out["copper_usd_toz"] * TOZ_PER_LB
+
+    # --- 18k per gram, derived from مثقال when no direct 18k feed answers ---
+    # Engine 1 is built on the 18k gram price: parity, the gap, grams per
+    # billion and every ladder rung reference it. brsapi served it directly;
+    # when it is unreachable the melted-gold quote carries the same
+    # information, because مثقال is just 3.2489 g of the same fine gold.
+    #   toman/g 24k = mesghal / 3.2489   ->   18k = x 0.750
+    if out.get("gold18k_toman") is None and out.get("mesghal_toman"):
+        out["gold18k_toman"] = out["mesghal_toman"] / MESGHAL_FINE_G * K18
+        out["gold18k_is_derived"] = 1.0
 
     # --- import parity for 18k gold, in toman per gram ---
     if out.get("xau_usd") and out.get("usd_free"):
@@ -104,4 +117,14 @@ def sanity_warnings(v: dict) -> list[str]:
     xau = v.get("xau_usd")
     if xau and not (500 <= xau <= 20_000):
         w.append(f"xau_usd={xau} implausible")
+    # Parity pairs a gold quote against a dollar quote. If they are from
+    # different sessions the gap is an artefact of the calendar, not an edge —
+    # this bot has already been burned once by pairing mismatched dates.
+    spread = v.get("tgju_quote_spread_days")
+    if spread:
+        w.append(f"tgju quotes span {spread:.0f} days — the parity gap pairs "
+                 f"prints from different sessions, treat it as indicative")
+    if v.get("gold18k_is_derived"):
+        w.append("gold18k_toman derived from مثقال (no direct 18k feed) — "
+                 "it carries the melted-gold spread, not a dealer 18k print")
     return w
