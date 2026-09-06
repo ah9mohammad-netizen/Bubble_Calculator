@@ -3,6 +3,7 @@
 No network needed. The fixture is the real market state of 10 Shahrivar 1405
 that the handbook was written against; every expectation was hand-checked.
 """
+import json
 import pathlib
 import sys
 
@@ -260,3 +261,104 @@ def test_empty_custom_slot_fails_with_a_readable_message():
     from desk.http_source import fetch_http_source
     with pytest.raises(ValueError, match="no `url` set"):
         fetch_http_source("custom_a", {"url": "", "fields": {}}, [])
+
+
+# ───────────────────────── /probeurl ─────────────────────────
+# The remaining gap is fund price + NAV, and the question is which host will
+# answer Railway at all. /probeurl moves that test into Telegram.
+import pytest
+
+from desk.probe import ProbeRefused, numeric_paths, probe_url
+
+
+def test_numeric_paths_are_sources_yaml_paths():
+    payload = {"items": [{"name": "طلا", "nav": 1578000, "last": "1,556,199"},
+                         {"name": "اهرم", "nav": 73496}], "ok": True}
+    got = dict(numeric_paths(payload))
+    assert got["items[0].nav"] == 1578000.0
+    assert got["items[0].last"] == 1556199.0      # comma-separated string
+    assert got["items[1].nav"] == 73496.0
+    assert "ok" not in got                        # booleans are not numbers
+
+
+def test_numeric_paths_reads_persian_digits_and_nesting():
+    got = dict(numeric_paths({"a": {"b": {"c": "۱۲۳٬۴۵۶"}}}))
+    assert got["a.b.c"] == 123456.0
+
+
+def test_probeurl_refuses_anything_but_a_public_https_host():
+    for bad in ("http://example.com/x",           # plaintext
+                "https://localhost/x",            # loopback
+                "https://127.0.0.1/x",
+                "https://169.254.169.254/latest", # cloud metadata
+                "https://10.0.0.5/x"):            # private range
+        with pytest.raises(ProbeRefused):
+            probe_url(bad)
+
+
+def test_probeurl_rejects_a_url_with_no_host():
+    with pytest.raises(ProbeRefused):
+        probe_url("https:///nothing")
+
+
+# ───────────────────────── manual values ─────────────────────────
+class _FakeStore:
+    def __init__(self):
+        self.kv = {}
+
+    def set(self, k, v):
+        self.kv[k] = v
+
+
+def _set(arg):
+    from desk.service import Desk
+    d = object.__new__(Desk)
+    d.store = _FakeStore()
+    return d.cmd_set(arg), d.store.kv
+
+
+def test_set_takes_several_pairs_at_once():
+    """Six values for fund price+NAV must not be six separate messages."""
+    msg, kv = _set("tala_price 1,556,199 tala_nav 1578000 ahrom_nav 73496")
+    assert kv == {"manual.tala_price": 1556199.0,
+                  "manual.tala_nav": 1578000.0,
+                  "manual.ahrom_nav": 73496.0}
+    assert "tala_price" in msg
+
+
+def test_set_accepts_equals_and_reports_bad_values():
+    msg, kv = _set("iran_cpi_yoy=84.2")
+    assert kv == {"manual.iran_cpi_yoy": 84.2}
+    msg, kv = _set("tala_nav abc")
+    assert kv == {} and "skipped" in msg
+
+
+def test_set_rejects_an_odd_number_of_words():
+    msg, kv = _set("tala_price 1 tala_nav")
+    assert kv == {} and "Usage" in msg
+
+
+def test_probeurl_is_owner_only():
+    from desk.service import Desk
+    assert "/probeurl" in Desk.OWNER_ONLY
+    assert "/probeurl" in Desk(pathlib.Path("/tmp")).commands()
+
+
+# ───────────────────────── source wiring ─────────────────────────
+def test_metals_dev_outranks_the_keyless_spot_fallback():
+    """Later sources win the merge, so metals.dev must come after gold-api."""
+    names = list(load_yaml("sources.yaml")["sources"])
+    assert names.index("gold_api_xau") < names.index("metals_dev")
+    assert names.index("tgju") < names.index("metals_dev")
+
+
+def test_keyless_fallbacks_need_no_api_key():
+    src = load_yaml("sources.yaml")["sources"]
+    for name in ("gold_api_xau", "gold_api_xag", "coingecko", "tgju"):
+        assert "${" not in json.dumps(src[name].get("params", {})), name
+
+
+def test_fund_slots_are_present_and_empty():
+    src = load_yaml("sources.yaml")["sources"]
+    for name in ("funds_a", "funds_b"):
+        assert src[name]["enabled"] is False and src[name]["fields"] == {}

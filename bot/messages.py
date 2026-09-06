@@ -252,6 +252,7 @@ engine — import parity, the fund wrappers, world spot — against 33 rules.
 /funds — طلا · پلاتا · اهرم premium vs NAV
 /rules — every rule vs its threshold   /fires — recent desk signals
 /health — data-source status   /desk — the desk's own help
+/probeurl &lt;url&gt; — test a data source from this server (owner only)
 
 <b>━━ REALITY CHECKS ━━</b>
 • 6 trades in 6.4 years. It is a patient strategy.

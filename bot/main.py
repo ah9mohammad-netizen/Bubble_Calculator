@@ -360,6 +360,23 @@ COMMANDS = {
 }
 
 
+def _owner_only(fn):
+    """Restrict a handler to the configured owner chat.
+
+    The strategy bot has never authenticated its commands, and that is fine
+    for /price. It is not fine for /probeurl, which makes this process fetch
+    a URL the caller chose. Gate it here, where CHAT_ID lives.
+    """
+    inner = _desk_cmd(fn)
+
+    def handler(chat, arg):
+        if str(chat) != str(CHAT_ID):
+            send("That command is limited to the bot owner.", chat)
+            return
+        inner(chat, arg)
+    return handler
+
+
 def register_desk_commands(d) -> None:
     """Merge the desk's commands in. An existing command always wins — the
     strategy bot's UI is the one people already use, and silently shadowing
@@ -369,7 +386,8 @@ def register_desk_commands(d) -> None:
         if name in COMMANDS:
             log.warning("desk command %s collides with an existing one — skipped", name)
             continue
-        COMMANDS[name] = _desk_cmd(fn)
+        COMMANDS[name] = (_owner_only(fn) if name in d.OWNER_ONLY
+                          else _desk_cmd(fn))
 
 
 def _subscribe(chat):

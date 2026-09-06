@@ -21,6 +21,7 @@ from .collector import Collector, LAST_RAW
 from .config import load_yaml, settings
 from .format import esc, gates_block, ladder_block, snapshot_block, stamp
 from .notify import gate
+from .probe import ProbeRefused, probe_url
 from .rules import SEVERITY_ICON, RulesEngine
 from .store import Store
 
@@ -37,7 +38,9 @@ HELP = """*Metals Desk*
 `/fires`    recent desk signals
 `/health`   source status and staleness
 `/probe X`  raw response from source X (schema mapping)
-`/set k v`  set a manual value (e.g. `/set iran_cpi_yoy 84.2`)
+`/probeurl <url> [filter]`  fetch any URL from this box and list its
+            numeric paths — use it to test a data source before wiring it
+`/set k v [k v ...]`  set manual values (e.g. `/set iran_cpi_yoy 84.2`)
 `/thresh id v`  override a rule threshold
 `/mute` `/unmute`
 `/reload`   re-read config from disk
@@ -46,6 +49,11 @@ HELP = """*Metals Desk*
 
 class Desk:
     """Owns the desk's store, rules engine and collector."""
+
+    # Commands only the configured owner chat may run. /probeurl makes this
+    # process fetch a URL of the caller's choosing, which is not something to
+    # hand to whoever finds the bot.
+    OWNER_ONLY = frozenset({"/probeurl"})
 
     def __init__(self, data_dir: Path | str):
         self.db_path = Path(data_dir) / "desk.db"
@@ -254,16 +262,31 @@ class Desk:
         return f"`{name}` raw:\n```\n{raw[:3500]}\n```"
 
     def cmd_set(self, arg: str = "") -> str:
-        parts = (arg or "").split()
-        if len(parts) < 2:
-            return "Usage: `/set iran_cpi_yoy 84.2`"
-        k, raw = parts[0], parts[1]
-        try:
-            val = float(raw.replace(",", ""))
-        except ValueError:
-            return "Value must be numeric."
-        self.store.set(f"manual.{k}", val)
-        return f"Set `{k}` = `{val:,.4g}` (persisted, applied on the next poll)."
+        """Accepts several key/value pairs at once.
+
+        Supplying fund price and NAV by hand is six values; making that six
+        separate messages is how people stop doing it.
+        """
+        parts = (arg or "").replace("=", " ").split()
+        if len(parts) < 2 or len(parts) % 2:
+            return ("Usage: `/set iran_cpi_yoy 84.2`\n"
+                    "Several at once: `/set tala_price 1556199 tala_nav 1578000`")
+        done, bad = [], []
+        for k, raw in zip(parts[::2], parts[1::2]):
+            try:
+                val = float(raw.replace(",", "").replace("٬", ""))
+            except ValueError:
+                bad.append(k)
+                continue
+            self.store.set(f"manual.{k}", val)
+            done.append(f"`{k}` = `{val:,.4g}`")
+        out = []
+        if done:
+            out.append("Set " + ", ".join(done) + " (persisted, applied on the "
+                       "next poll).")
+        if bad:
+            out.append("Not numeric, skipped: " + ", ".join(f"`{k}`" for k in bad))
+        return "\n".join(out)
 
     def cmd_thresh(self, arg: str = "") -> str:
         parts = (arg or "").split()
@@ -279,6 +302,35 @@ class Desk:
             return f"Unknown rule id `{rid}`. `/rules` lists them."
         self.store.set(f"thresh.{rid}", val)
         return f"Override set: `{rid}` -> `{val}`."
+
+    def cmd_probeurl(self, arg: str = "") -> str:
+        """Test a candidate data source from the deployment's own IP.
+
+        The blocker with Iranian hosts is reachability, not schema, and only
+        this box can answer whether a host replies to it. Owner-gated in
+        main.py; see probe.py for the SSRF guard.
+        """
+        parts = (arg or "").split(maxsplit=1)
+        if not parts:
+            return ("Usage: `/probeurl https://host/path` — fetches it from this "
+                    "server and lists the numeric fields it found.\n"
+                    "Add a filter to narrow a long list: "
+                    "`/probeurl https://host/path nav`\n\n"
+                    "Find the URL: open the site in a desktop browser, "
+                    "DevTools → Network → Fetch/XHR, and copy the request that "
+                    "returns the numbers (not the page itself).")
+        url, needle = parts[0], (parts[1].strip() if len(parts) > 1 else "")
+        try:
+            return probe_url(url, needle)
+        except ProbeRefused as e:
+            return f"Refused: {e}"
+        except Exception as e:                            # noqa: BLE001
+            # The failure IS the answer here — a timeout or a reset is how you
+            # learn this host does not serve Railway.
+            return (f"`{type(e).__name__}` — {str(e)[:400]}\n\n"
+                    f"_If this is a timeout or a connection reset, that host "
+                    f"does not answer this deployment. Same situation as brsapi "
+                    f"and TSETMC; see README > Blocked IPs._")
 
     def cmd_mute(self, arg: str = "") -> str:
         self.store.set("muted", True)
@@ -309,6 +361,7 @@ class Desk:
             "/fires": self.cmd_fires,
             "/health": self.cmd_health,
             "/probe": self.cmd_probe,
+            "/probeurl": self.cmd_probeurl,
             "/set": self.cmd_set,
             "/thresh": self.cmd_thresh,
             "/mute": self.cmd_mute,

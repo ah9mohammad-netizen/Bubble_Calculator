@@ -78,8 +78,9 @@ did, the existing command wins and the desk logs that it was skipped.
 /now      full snapshot          /rules    every rule vs its threshold
 /gates    handbook entry gates   /fires    recent desk signals
 /ladder   ladder rung status     /health   source status + staleness
-/parity   parity, step by step   /probe X  raw JSON from source X
-/funds    fund premiums          /set k v  manual value (CPI, oil exports)
+/parity   parity, step by step   /probe X  raw JSON from a wired source
+/funds    fund premiums          /set k v [k v ...]  manual values
+/probeurl <url> [filter]  fetch ANY url from this box, list its numbers
 /mute /unmute                    /thresh id v   override a threshold
 /reload   re-read config from disk
 /desk     this command list
@@ -99,7 +100,8 @@ if you stand up the relay. tgju carries Engine 1 in their place.
 | Source | What | Status |
 |---|---|---|
 | `api.tgju.org` | USD free, مثقال, ربع سکه, XAU — plus 18k, سکه امامی, XAG to confirm | **working** — `bot/datafeed.py` has read this same endpoint from this same service since launch |
-| `metals.dev` | XAU, XAG, copper | works; free-tier key |
+| `api.gold-api.com` | XAU, XAG | keyless fallback — same host `datafeed.py` already falls back to |
+| `metals.dev` | XAU, XAG, copper | needs `METALS_DEV_KEY`; **401 without it**, which looks identical to a block |
 | `coingecko` | BTC | works; no key |
 | `brsapi.ir` | USD حواله, direct 18k | **disabled** — not answering |
 | `cdn.tsetmc.com` | fund price + **NAV**, TEDPIX | **disabled** — not answering |
@@ -125,6 +127,42 @@ billion. `test_engine_one_survives_on_tgju_alone` pins that.
 So on tgju alone you keep: parity and the gap, the FX side of Engine 1, grams
 per billion, the full ladder, and world spot.
 
+### Finding a fund source: `/probeurl`
+
+TSETMC was the only source of طلا / پلاتا / اهرم price and NAV, and it does not
+answer this deployment. The question for any replacement is not "what shape is
+the JSON" — it is **"will this host talk to Railway at all"**, and only the
+Railway box can answer that. So ask it directly:
+
+```
+/probeurl https://fund.fipiran.ir/api/v1/fund/fundcompare
+/probeurl https://some-host/api/funds nav        ← filter a long response
+```
+
+It fetches from the deployment's own IP and prints the status, the size, and
+every numeric field with the exact dot/bracket path `sources.yaml` wants —
+flagging the ones whose key looks like a price or a NAV. Paste a path into
+`funds_a`, `/reload`, done. No redeploy, no code change.
+
+**A timeout or a connection reset is the answer**, not a failure: that host is
+blocked the same way brsapi and TSETMC are, so move to the next candidate.
+
+**Getting the URL right matters more than anything else.** The page address is
+HTML and will not work. Open the site in a *desktop* browser → DevTools →
+Network → Fetch/XHR → reload → copy the request that returns the numbers.
+`/probeurl` says so explicitly when you hand it a page instead of an endpoint.
+
+Candidates worth probing, in the order I would try them:
+
+| Host | Why | Status |
+|---|---|---|
+| `fund.fipiran.ir` | the canonical NAV publisher, and a *different host* from tsetmc — which matters, since tgju answers and tsetmc does not | URL above is a **candidate, unverified from here** |
+| rahavard365 / chartix / alandinvest | all three show the funds, so all three fetch the data from somewhere | find their XHR, then probe |
+
+`/probeurl` is **owner-only** — it makes the bot fetch a URL the caller chose,
+and it refuses anything but a public `https` host (no loopback, no private
+range, no cloud-metadata endpoint).
+
 ### What is dark until a source comes back
 
 | Missing | Costs you |
@@ -140,10 +178,12 @@ scraped field, persist in `desk.db`, and are carried forward between updates:
 
 ```
 /set usd_havaleh 157480
-/set tala_price 1556199    /set tala_nav 1578000
-/set plata_price 12150     /set plata_nav 11667
-/set ahrom_price 57106     /set ahrom_nav 73496
+/set tala_price 1556199 tala_nav 1578000 plata_price 12150 plata_nav 11667
+/set ahrom_price 57106 ahrom_nav 73496
 ```
+
+`/set` takes as many key/value pairs as you like in one message, because six
+values in six separate messages is how people stop bothering.
 
 That is about a minute a day and it re-arms the kill criterion, which is the
 one rule you least want dark.
