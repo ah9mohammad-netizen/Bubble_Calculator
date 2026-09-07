@@ -362,3 +362,75 @@ def test_fund_slots_are_present_and_empty():
     src = load_yaml("sources.yaml")["sources"]
     for name in ("funds_a", "funds_b"):
         assert src[name]["enabled"] is False and src[name]["fields"] == {}
+
+
+# ───────────────────────── hunting the fund quotes ─────────────────────────
+from desk.probe import embedded_json
+from desk.tgju import SCAN_CANDIDATES, probe_symbol, scan
+
+
+def test_scan_candidates_include_controls_and_the_funds():
+    """A scan with no known-good control cannot tell 'slug does not exist'
+    from 'tgju is down', so the controls are part of the list."""
+    for control in ("price_dollar_rl", "mesghal", "ons"):
+        assert control in SCAN_CANDIDATES
+    assert any("tala" in s for s in SCAN_CANDIDATES)
+    assert any("ahrom" in s for s in SCAN_CANDIDATES)
+    # the unconfirmed slugs already wired into sources.yaml get settled too
+    for unconfirmed in ("geram18", "silver", "sekee", "bourse"):
+        assert unconfirmed in SCAN_CANDIDATES
+
+
+def _fake_tgju(monkeypatch, serves):
+    import desk.tgju as T
+
+    def fake(url, params=None, timeout=None, headers=None):
+        sym = url.rstrip("/").split("/")[-1]
+        if sym not in serves:
+            raise RuntimeError("404 Not Found")
+        v = serves[sym]
+        return {"data": [[v, v, v, f"{v:,}", "0", "0", "2026-09-06", "1405/06/15"]]}, "{}"
+
+    monkeypatch.setattr(T, "get_json", fake)
+    return {"url": "https://api.tgju.org/x/{symbol}", "timeout": 5,
+            "close_index": 3, "date_index": 6, "rows": 5}
+
+
+def test_probe_symbol_separates_a_miss_from_a_hit(monkeypatch):
+    spec = _fake_tgju(monkeypatch, {"mesghal": 960_360_500})
+    close, date, err = probe_symbol(spec, "mesghal")
+    assert (close, date, err) == (960360500.0, "2026-09-06", None)
+    close, date, err = probe_symbol(spec, "no_such_slug")
+    assert close is None and "404" in err
+
+
+def test_scan_reports_every_slug_it_was_given(monkeypatch):
+    spec = _fake_tgju(monkeypatch, {"mesghal": 1, "tala": 2})
+    rows = scan(spec, ["mesghal", "tala", "ghost"])
+    assert {r[0] for r in rows} == {"mesghal", "tala", "ghost"}
+    assert [r[0] for r in rows if r[3] is None] == ["mesghal", "tala"]
+
+
+def test_probe_reads_json_baked_into_a_nextjs_page():
+    """Iranian market sites are mostly Next.js/Nuxt: the page URL is often
+    usable after all, because the data is in the HTML."""
+    payload = {"props": {"funds": [{"symbol": "طلا", "nav": 1578000,
+                                    "last": "1,556,199"}]}}
+    html = ('<html><body><script id="__NEXT_DATA__" type="application/json">'
+            + json.dumps(payload, ensure_ascii=False) + "</script></body></html>")
+    data, where = embedded_json(html)
+    assert data == payload and "NEXT_DATA" in where
+    paths = dict(numeric_paths(data))
+    assert paths["props.funds[0].nav"] == 1578000.0
+    assert paths["props.funds[0].last"] == 1556199.0
+
+
+def test_probe_reads_a_nuxt_payload_too():
+    html = '<script>window.__NUXT__={"a":{"nav":73496}};</script>'
+    data, _ = embedded_json(html)
+    assert dict(numeric_paths(data))["a.nav"] == 73496.0
+
+
+def test_probe_says_so_when_a_page_really_has_no_json():
+    assert embedded_json("<html><body>no data here</body></html>") == (None, "")
+    assert embedded_json('<script type="application/json">{]</script>') == (None, "")

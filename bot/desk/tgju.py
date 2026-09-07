@@ -84,6 +84,47 @@ def _spread_days(dates: list[str]) -> float | None:
     return (b - a).days
 
 
+# Candidate slugs to scan with /tgju. tgju is the only Iranian host that
+# answers this deployment, so before hunting a new provider it is worth
+# finding out what tgju itself will serve. These are guesses in tgju's own
+# naming style, not documented endpoints — the scan reports which ones
+# actually return rows, which is the only thing that settles it.
+SCAN_CANDIDATES = [
+    # the funds we are missing
+    "tala", "sandogh_tala", "fund_tala", "etf_tala", "gold_fund", "lotus_tala",
+    "plata", "sandogh_noghre", "silver_fund",
+    "ahrom", "sandogh_ahrom", "leverage_fund",
+    # already in sources.yaml but unconfirmed — the scan settles these too
+    "geram18", "silver", "sekee", "bourse",
+    # known-good controls: if these come back empty the scan itself is broken
+    "price_dollar_rl", "mesghal", "ons",
+]
+
+
+def probe_symbol(spec: dict, sym: str, via_relay: bool = False) -> tuple:
+    """(close, date, error) for one slug. Never raises."""
+    try:
+        close, date, _ = _one(spec, sym, via_relay)
+    except Exception as e:                                 # noqa: BLE001
+        return None, None, f"{type(e).__name__}: {str(e)[:80]}"
+    if close is None:
+        return None, None, "200 but no usable row"
+    return close, date, None
+
+
+def scan(spec: dict, symbols: list[str], via_relay: bool = False) -> list[tuple]:
+    """Try many slugs at once. Returns [(sym, close, date, error)]."""
+    futures = {s: _POOL.submit(probe_symbol, spec, s, via_relay) for s in symbols}
+    out = []
+    for sym, fut in futures.items():
+        try:
+            close, date, err = fut.result(timeout=spec.get("timeout", 15) + 10)
+        except Exception as e:                             # noqa: BLE001
+            close, date, err = None, None, f"{type(e).__name__}"
+        out.append((sym, close, date, err))
+    return out
+
+
 def fetch_tgju(spec: dict, store=None, via_relay: bool = False) -> tuple[dict, str]:
     out: dict[str, float] = {}
     raw_bits: list[str] = []

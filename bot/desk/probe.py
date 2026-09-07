@@ -16,6 +16,7 @@ it point anywhere.
 from __future__ import annotations
 import ipaddress
 import json
+import re
 import socket
 from urllib.parse import urlparse
 
@@ -24,6 +25,31 @@ import requests
 from .http_source import UA, num
 
 MAX_PATHS = 40
+# Most Iranian market sites are Next.js or Nuxt: the page is a shell and the
+# numbers arrive either by XHR or baked into a JSON blob in the HTML. Digging
+# that blob out means a page URL is often usable after all.
+_EMBEDDED = (
+    re.compile(r'<script[^>]+id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S),
+    re.compile(r'<script[^>]+type="application/json"[^>]*>(.*?)</script>', re.S),
+    re.compile(r'window\.__NUXT__\s*=\s*(\{.*?\});?\s*</script>', re.S),
+)
+
+
+def embedded_json(html: str):
+    """Return (parsed, where) for the biggest JSON blob inside an HTML page."""
+    best, where = None, ""
+    for rx in _EMBEDDED:
+        for m in rx.finditer(html):
+            blob = m.group(1).strip()
+            if len(blob) < 10:          # skip `{}` and other empty shells
+                continue
+            try:
+                parsed = json.loads(blob)
+            except ValueError:
+                continue
+            if best is None or len(blob) > best[0]:
+                best, where = (len(blob), parsed), rx.pattern[:28]
+    return (best[1], where) if best else (None, "")
 MAX_BYTES = 400_000
 TIMEOUT = 20
 
@@ -115,11 +141,16 @@ def probe_url(url: str, needle: str = "") -> str:
     try:
         data = json.loads(text)
     except ValueError:
-        head.append("\n*Not JSON.* This is the page, not its data. Open the site "
-                    "in a desktop browser, DevTools → Network → Fetch/XHR, find "
-                    "the request that returns the numbers, and probe that URL.")
-        head.append(f"```\n{text[:500]}\n```")
-        return "\n".join(head)
+        data, where = embedded_json(text)
+        if data is None:
+            head.append("\n*Not JSON, and no JSON found inside the page.* The "
+                        "numbers are fetched by the browser after load. Open the "
+                        "site in a DESKTOP browser → DevTools → Network → "
+                        "Fetch/XHR → reload, and probe the request that returns "
+                        "them.")
+            head.append(f"```\n{text[:400]}\n```")
+            return "\n".join(head)
+        head.append(f"_HTML page, but it embeds JSON (`{where}`) — reading that._")
 
     paths = numeric_paths(data)
     if needle:

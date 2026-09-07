@@ -22,6 +22,7 @@ from .config import load_yaml, settings
 from .format import esc, gates_block, ladder_block, snapshot_block, stamp
 from .notify import gate
 from .probe import ProbeRefused, probe_url
+from .tgju import SCAN_CANDIDATES, scan as tgju_scan
 from .rules import SEVERITY_ICON, RulesEngine
 from .store import Store
 
@@ -40,6 +41,8 @@ HELP = """*Metals Desk*
 `/probe X`  raw response from source X (schema mapping)
 `/probeurl <url> [filter]`  fetch any URL from this box and list its
             numeric paths — use it to test a data source before wiring it
+`/tgju [slug ...]`  ask tgju which indicator slugs it will actually serve
+            (no args = scan the candidates for the missing funds)
 `/set k v [k v ...]`  set manual values (e.g. `/set iran_cpi_yoy 84.2`)
 `/thresh id v`  override a rule threshold
 `/mute` `/unmute`
@@ -332,6 +335,43 @@ class Desk:
                     f"does not answer this deployment. Same situation as brsapi "
                     f"and TSETMC; see README > Blocked IPs._")
 
+    def cmd_tgju(self, arg: str = "") -> str:
+        """Ask tgju what it will actually serve, one slug at a time.
+
+        tgju is the only Iranian host answering this deployment, so before
+        hunting a new provider for the fund quotes it is worth finding out
+        whether tgju itself carries them. Slug names are not documented
+        anywhere, and guessing is free if checking is one message.
+        """
+        spec = dict(self.collector.sources.get("tgju") or {})
+        if not spec.get("url"):
+            return "No `tgju` source in sources.yaml."
+        syms = [w.strip(" ,") for w in (arg or "").split() if w.strip(" ,")]
+        scanning_defaults = not syms
+        syms = syms[:24] or SCAN_CANDIDATES
+        spec["timeout"] = min(int(spec.get("timeout", 15)), 12)
+
+        rows = tgju_scan(spec, syms, "tgju" in self.collector.relay_targets)
+        live = [(s_, c, d) for s_, c, d, e in rows if e is None]
+        dead = [(s_, e) for s_, c, d, e in rows if e is not None]
+
+        out = [f"*tgju slug scan* — {len(live)}/{len(rows)} answered"]
+        if live:
+            out.append("\n*SERVES DATA*")
+            for sym, close, date in sorted(live):
+                out.append(f"`{sym}` = `{close:,.0f}`  _{date}_")
+        if dead:
+            out.append("\n*NOTHING*")
+            out.append("`" + "` `".join(sym for sym, _ in sorted(dead)) + "`")
+        if scanning_defaults:
+            out.append("\n_Controls `price_dollar_rl`, `mesghal` and `ons` must "
+                       "be in the SERVES list — if they are not, tgju itself is "
+                       "down and this scan says nothing._")
+        out.append("\nA slug that serves data goes straight into the `tgju` "
+                   "fields block in `sources.yaml`, then `/reload`. "
+                   "Try more with `/tgju slug1 slug2`.")
+        return "\n".join(out)
+
     def cmd_mute(self, arg: str = "") -> str:
         self.store.set("muted", True)
         return "Desk muted. `critical` rules still come through. `/unmute` to restore."
@@ -362,6 +402,7 @@ class Desk:
             "/health": self.cmd_health,
             "/probe": self.cmd_probe,
             "/probeurl": self.cmd_probeurl,
+            "/tgju": self.cmd_tgju,
             "/set": self.cmd_set,
             "/thresh": self.cmd_thresh,
             "/mute": self.cmd_mute,

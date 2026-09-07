@@ -81,6 +81,7 @@ did, the existing command wins and the desk logs that it was skipped.
 /parity   parity, step by step   /probe X  raw JSON from a wired source
 /funds    fund premiums          /set k v [k v ...]  manual values
 /probeurl <url> [filter]  fetch ANY url from this box, list its numbers
+/tgju [slug ...]          ask tgju which slugs it will actually serve
 /mute /unmute                    /thresh id v   override a threshold
 /reload   re-read config from disk
 /desk     this command list
@@ -127,7 +128,30 @@ billion. `test_engine_one_survives_on_tgju_alone` pins that.
 So on tgju alone you keep: parity and the gap, the FX side of Engine 1, grams
 per billion, the full ladder, and world spot.
 
-### Finding a fund source: `/probeurl`
+### Still no طلا / پلاتا / اهرم? Work it in this order
+
+**1. Ask tgju first.** It is the only Iranian host answering this deployment,
+so before hunting a new provider, find out what tgju itself carries:
+
+```
+/tgju
+```
+
+That scans a list of candidate slugs — fund names in tgju's own naming style,
+the unconfirmed ones already wired into `sources.yaml` (`geram18`, `silver`,
+`sekee`, `bourse`), and three known-good controls. It reports which slugs
+returned rows and which returned nothing.
+
+**Read the controls first.** `price_dollar_rl`, `mesghal` and `ons` must
+appear under SERVES DATA. If they do not, tgju is down and the rest of the
+scan means nothing. Try your own guesses with `/tgju slug1 slug2`. Anything
+that serves data goes straight into the `tgju` fields block, then `/reload`.
+
+**2. Then probe the other sites.** See below.
+
+### Probing a candidate host: `/probeurl`
+
+
 
 TSETMC was the only source of طلا / پلاتا / اهرم price and NAV, and it does not
 answer this deployment. The question for any replacement is not "what shape is
@@ -147,10 +171,21 @@ flagging the ones whose key looks like a price or a NAV. Paste a path into
 **A timeout or a connection reset is the answer**, not a failure: that host is
 blocked the same way brsapi and TSETMC are, so move to the next candidate.
 
-**Getting the URL right matters more than anything else.** The page address is
-HTML and will not work. Open the site in a *desktop* browser → DevTools →
-Network → Fetch/XHR → reload → copy the request that returns the numbers.
-`/probeurl` says so explicitly when you hand it a page instead of an endpoint.
+**Try the page URL first — it may just work.** rahavard365, chartix and
+alandinvest are Next.js/Nuxt sites, and those bake their data into a JSON blob
+inside the HTML (`__NEXT_DATA__`, `window.__NUXT__`). `/probeurl` digs that out
+and scans it like any other JSON, so pasting the page address is worth one try:
+
+```
+/probeurl https://rahavard365.com/fund
+/probeurl https://chartix.ir/market/saham-fund
+/probeurl https://alandinvest.com/markets/bourse/68
+```
+
+If the reply says it found no JSON inside the page, the numbers arrive by XHR
+after load. Then open the site in a *desktop* browser → DevTools → Network →
+Fetch/XHR → reload → copy the request that returns them, and probe that URL
+instead.
 
 Candidates worth probing, in the order I would try them:
 
