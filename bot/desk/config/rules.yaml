@@ -1,0 +1,410 @@
+# ============================================================
+#  Handbook rules, declarative.
+#  Edit thresholds here; never in code.  Bot reloads on /reload.
+#
+#  metric   : name produced by src/derive.py
+#  op       : lt | gt | between | outside | crosses_down | crosses_up | abs_gt
+#  severity : info | watch | action | critical   (critical ignores quiet hours)
+#  cooldown : seconds before this rule can fire again
+# ============================================================
+
+meta:
+  version: "1.0"
+  source_doc: "Two Engines Handbook, 1405-06-10"
+  # Baselines the handbook was written against. /calibrate updates them.
+  baseline:
+    usd_free: 211100
+    usd_havaleh: 157480
+    gold18k_toman: 22170000
+    xau_usd: 4430
+    xag_usd: 66.58
+    copper_usd_lb: 6.58
+    btc_usd: 78244
+    tedpix: 6547933
+    iran_cpi_yoy: 87.9
+
+rules:
+
+# ---------- ENGINE 1: the toman ----------
+  - id: parity_discount
+    group: parity
+    title: "18k gold trading below import parity"
+    metric: gold_parity_gap_pct
+    op: lt
+    value: -5.0
+    severity: action
+    cooldown: 10800
+    message: |
+      *Parity discount {gold_parity_gap_pct:+.1f}%*
+      Market {gold18k_toman:,.0f} vs parity {gold_parity_toman:,.0f} toman/g
+      ounce ${xau_usd:,.0f} x dollar {usd_free:,.0f}
+      _This is the setup that paid +20.5% overnight on 10 Shahrivar._
+
+  - id: parity_premium
+    group: parity
+    title: "18k gold above import parity"
+    metric: gold_parity_gap_pct
+    op: gt
+    value: 5.0
+    severity: watch
+    cooldown: 10800
+    message: |
+      *Parity premium {gold_parity_gap_pct:+.1f}%*
+      You would be paying {gold_parity_gap_pct:.1f}% over the metal. Do not add.
+
+  - id: fx_spread_widening
+    group: parity
+    title: "Free / havaleh spread widened"
+    metric: fx_spread_pct
+    op: gt
+    value: 40.0
+    severity: watch
+    cooldown: 21600
+    message: |
+      *FX spread {fx_spread_pct:.1f}%*  (free {usd_free:,.0f} / havaleh {usd_havaleh:,.0f})
+      Widening spread = gold has room to reprice up.
+
+  - id: fx_spread_converging
+    group: kill
+    title: "KILL CRITERION - FX spread converging"
+    metric: fx_spread_pct
+    op: lt
+    value: 15.0
+    severity: critical
+    cooldown: 86400
+    message: |
+      *KILL CRITERION HIT - FX spread {fx_spread_pct:.1f}%*
+      Government regaining control of FX supply.
+      Gold's toman upside largely disappears. Rebuild the plan, do not tweak it.
+
+# ---------- THE LADDER (entries) ----------
+  - id: ladder_rung_2
+    group: ladder
+    title: "Ladder rung 2 - 20.8M"
+    metric: gold18k_toman
+    op: crosses_down
+    value: 20800000
+    severity: action
+    cooldown: 172800
+    message: |
+      *LADDER 2 of 4 - deploy 25%*
+      18k at {gold18k_toman:,.0f} toman/g  ->  {grams_per_billion:.1f} g per billion
+      Check طلا bubble is under +3% before the order.
+
+  - id: ladder_rung_3
+    group: ladder
+    title: "Ladder rung 3 - 19.5M"
+    metric: gold18k_toman
+    op: crosses_down
+    value: 19500000
+    severity: action
+    cooldown: 172800
+    message: |
+      *LADDER 3 of 4 - deploy 25%*
+      18k at {gold18k_toman:,.0f}  ->  {grams_per_billion:.1f} g per billion
+
+  - id: ladder_rung_4
+    group: ladder
+    title: "Ladder rung 4 - 18.0M"
+    metric: gold18k_toman
+    op: crosses_down
+    value: 18000000
+    severity: action
+    cooldown: 172800
+    message: |
+      *LADDER 4 of 4 - deploy final 20%*
+      18k at {gold18k_toman:,.0f}  ->  {grams_per_billion:.1f} g per billion
+      Full gap-fill zone. Largest intended tranche.
+
+  - id: thesis_break
+    group: kill
+    title: "Gold toman thesis break"
+    metric: gold18k_toman
+    op: crosses_down
+    value: 15500000
+    severity: critical
+    cooldown: 86400
+    message: |
+      *THESIS BREAK - 18k below 15.5M*
+      Tir 1405 low taken out. The havaleh anchor has won. Stop adding, reassess.
+
+# ---------- WRAPPERS: fund premium gates ----------
+  - id: tala_cheap
+    group: wrapper
+    title: "طلا bubble negative - accumulate"
+    metric: tala_bubble_pct
+    op: lt
+    value: 0.0
+    severity: action
+    cooldown: 21600
+    message: |
+      *طلا bubble {tala_bubble_pct:+.2f}%*  price {tala_price:,.0f} / NAV {tala_nav:,.0f}
+      Negative bubble = accumulate zone.
+
+  - id: tala_rich
+    group: wrapper
+    title: "طلا bubble above +3% - do not buy"
+    metric: tala_bubble_pct
+    op: gt
+    value: 3.0
+    severity: watch
+    cooldown: 21600
+    message: |
+      *طلا bubble {tala_bubble_pct:+.2f}% - GATE CLOSED*
+      Handbook rule: never buy a gold fund above +3%. Use a cheaper symbol or wait.
+
+  - id: plata_cheap
+    group: wrapper
+    title: "پلاتا premium under 4% - silver gate open"
+    metric: plata_premium_pct
+    op: lt
+    value: 4.0
+    severity: action
+    cooldown: 21600
+    message: |
+      *پلاتا premium {plata_premium_pct:+.2f}%*  price {plata_price:,.0f} / NAV {plata_nav:,.0f}
+      Cheapest wrapper condition met. Second condition: silver at $58-60 (now ${xag_usd:.2f}).
+
+  - id: plata_rich
+    group: wrapper
+    title: "پلاتا premium above 6% - avoid"
+    metric: plata_premium_pct
+    op: gt
+    value: 6.0
+    severity: watch
+    cooldown: 21600
+    message: |
+      *پلاتا premium {plata_premium_pct:+.2f}% - GATE CLOSED*
+      Silver must rise that much before you break even. Miss the trade instead.
+
+  - id: limit_day
+    group: wrapper
+    title: "A tracked fund is at its daily limit"
+    metric: any_fund_at_limit
+    op: gt
+    value: 0
+    severity: watch
+    cooldown: 14400
+    message: |
+      *LIMIT DAY - {limit_fund_names}*
+      Fund at +/-10% cap. Buying a limit-down queue fills instantly, but the fund
+      is ~4-5% rich to its own fallen NAV on day one. Let it catch down 2-3 sessions.
+
+# ---------- ENGINE 2: world spot ----------
+  - id: xau_support
+    group: spot
+    title: "Gold spot at near support"
+    metric: xau_usd
+    op: between
+    value: [4060, 4100]
+    severity: watch
+    cooldown: 43200
+    message: "*XAU ${xau_usd:,.0f}* - near support 4,060-4,100. Critical floor is 3,800."
+
+  - id: xau_critical
+    group: kill
+    title: "KILL CRITERION - gold below 3,800"
+    metric: xau_usd
+    op: lt
+    value: 3800
+    severity: critical
+    cooldown: 86400
+    message: |
+      *KILL CRITERION - XAU ${xau_usd:,.0f}*
+      Below 3,800. Ounce bear case confirmed. Core stays, satellite stops adding.
+
+  - id: xau_resistance
+    group: spot
+    title: "Gold spot into major resistance"
+    metric: xau_usd
+    op: gt
+    value: 4900
+    severity: watch
+    cooldown: 43200
+    message: "*XAU ${xau_usd:,.0f}* - into 4,900-5,000 resistance. Record is 5,595."
+
+  - id: xag_buy
+    group: spot
+    title: "Silver in the buy zone"
+    metric: xag_usd
+    op: between
+    value: [58, 60]
+    severity: action
+    cooldown: 43200
+    message: |
+      *XAG ${xag_usd:.2f} - buy zone*
+      BOTH conditions required. Silver: OK. Fund premium: پلاتا {plata_premium_pct:+.2f}% (need <5%).
+
+  - id: xag_trim
+    group: spot
+    title: "Silver into first supply shelf"
+    metric: xag_usd
+    op: between
+    value: [72, 75]
+    severity: watch
+    cooldown: 43200
+    message: "*XAG ${xag_usd:.2f}* - first trim shelf 72-75."
+
+  - id: xag_stop
+    group: spot
+    title: "Silver stop"
+    metric: xag_usd
+    op: lt
+    value: 52
+    severity: critical
+    cooldown: 86400
+    message: "*XAG ${xag_usd:.2f}* - below 52. The 2025-26 silver cycle has rolled over."
+
+  - id: gs_ratio_bull
+    group: spot
+    title: "Gold/silver ratio compressing"
+    metric: gold_silver_ratio
+    op: lt
+    value: 55
+    severity: watch
+    cooldown: 86400
+    message: "*G/S ratio {gold_silver_ratio:.1f}* - compressed. Silver outperforming; trim silver into it."
+
+  - id: gs_ratio_bear
+    group: spot
+    title: "Gold/silver ratio blowing out"
+    metric: gold_silver_ratio
+    op: gt
+    value: 80
+    severity: watch
+    cooldown: 86400
+    message: "*G/S ratio {gold_silver_ratio:.1f}* - industrial demand being repriced. Silver bear cell."
+
+  - id: copper_buy
+    group: spot
+    title: "Copper in the small-buy zone"
+    metric: copper_usd_lb
+    op: between
+    value: [5.90, 6.05]
+    severity: action
+    cooldown: 43200
+    message: "*Copper ${copper_usd_lb:.2f}* - buy zone. 5% position cap. Stop 5.40."
+
+  - id: copper_tp
+    group: spot
+    title: "Copper at target"
+    metric: copper_usd_lb
+    op: gt
+    value: 7.20
+    severity: action
+    cooldown: 43200
+    message: "*Copper ${copper_usd_lb:.2f}* - at the 12-month consensus. Take profit."
+
+  - id: copper_stop
+    group: spot
+    title: "Copper stop"
+    metric: copper_usd_lb
+    op: lt
+    value: 5.40
+    severity: critical
+    cooldown: 86400
+    message: "*Copper ${copper_usd_lb:.2f}* - stop. Growth scare confirmed. Do not average down."
+
+  - id: btc_buy
+    group: spot
+    title: "BTC in the buy zone"
+    metric: btc_usd
+    op: between
+    value: [68000, 72000]
+    severity: action
+    cooldown: 43200
+    message: "*BTC ${btc_usd:,.0f}* - buy zone 68-72k. 5% cap, stop 62k."
+
+  - id: btc_resistance
+    group: spot
+    title: "BTC at resistance"
+    metric: btc_usd
+    op: gt
+    value: 81500
+    severity: watch
+    cooldown: 43200
+    message: "*BTC ${btc_usd:,.0f}* - August high. Rejection here with rising exchange reserves = distribution."
+
+  - id: btc_stop
+    group: spot
+    title: "BTC stop"
+    metric: btc_usd
+    op: lt
+    value: 62000
+    severity: critical
+    cooldown: 86400
+    message: "*BTC ${btc_usd:,.0f}* - hard stop. No averaging down at a foreign counterparty."
+
+# ---------- OPPORTUNISTIC: leveraged discount ----------
+  - id: ahrom_add
+    group: leveraged
+    title: "اهرم discount wide enough to add"
+    metric: ahrom_discount_pct
+    op: lt
+    value: -26.0
+    severity: action
+    cooldown: 43200
+    message: |
+      *اهرم discount {ahrom_discount_pct:.1f}%*  price {ahrom_price:,.0f} / NAV {ahrom_nav:,.0f}
+      Add tranche - ONLY if fund NAV is holding. If NAV is falling too, the market is
+      repricing the portfolio: stop adding.
+
+  - id: ahrom_exit
+    group: leveraged
+    title: "اهرم discount converged - take it"
+    metric: ahrom_discount_pct
+    op: gt
+    value: -8.0
+    severity: action
+    cooldown: 43200
+    message: |
+      *اهرم discount {ahrom_discount_pct:.1f}% - CONVERGED*
+      This is what you came for. Exit the discount trade; do not stay for the beta.
+
+  - id: tedpix_trim
+    group: leveraged
+    title: "TEDPIX trim level"
+    metric: tedpix
+    op: gt
+    value: 7200000
+    severity: action
+    cooldown: 86400
+    message: "*TEDPIX {tedpix:,.0f}* - trim half the leveraged position."
+
+  - id: tedpix_stop
+    group: leveraged
+    title: "TEDPIX stop"
+    metric: tedpix
+    op: lt
+    value: 5600000
+    severity: critical
+    cooldown: 86400
+    message: |
+      *TEDPIX {tedpix:,.0f} - STOP*
+      -15% on the index. At 1.6x plus a widening discount you are down roughly 30%.
+
+# ---------- KILL CRITERIA: macro ----------
+  - id: kill_inflation
+    group: kill
+    title: "KILL CRITERION - inflation normalising"
+    metric: iran_cpi_yoy
+    op: lt
+    value: 40.0
+    severity: critical
+    cooldown: 604800
+    message: |
+      *KILL CRITERION - CPI {iran_cpi_yoy:.1f}% y/y*
+      The argument for a 70% hard-asset core no longer holds. Rebuild.
+
+  - id: kill_oil_recovery
+    group: kill
+    title: "KILL CRITERION - oil exports recovered"
+    metric: iran_oil_exports_bpd
+    op: gt
+    value: 1200000
+    severity: critical
+    cooldown: 604800
+    message: |
+      *KILL CRITERION - oil exports {iran_oil_exports_bpd:,.0f} bpd*
+      Above 1.2M bpd. The toman engine reverses. The 85% probability is void.
+      Rebuild the allocation, do not adjust it.

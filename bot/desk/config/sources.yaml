@@ -1,0 +1,217 @@
+# Field mapping lives here, NOT in code.
+# Iranian feeds change their JSON shape — and their willingness to answer a
+# foreign IP — without notice. When one breaks:
+#     /probe <source>     dump the raw response
+#     edit the path here
+#     /reload             re-read, no redeploy
+# Paths are dot/bracket notation: "gold[0].price" or "metals.gold".
+#
+# ── UNITS ────────────────────────────────────────────────────────────────
+# The desk works in TOMAN. tgju quotes Iranian instruments in RIAL, so every
+# Iranian tgju field carries scale: 0.1. A wrong scale is a clean factor of
+# ten; derive.sanity_warnings() catches it against parity on the first poll
+# and names the line to fix.
+#
+# ── SOURCE ORDER MATTERS ─────────────────────────────────────────────────
+# The collector merges sources in the order below, and a later source
+# overwrites an earlier one only for the fields it actually returned. So the
+# proven-but-coarse feed goes first and the better-but-flakier one goes after
+# it: when metals.dev answers it wins on spot, and when it does not, tgju's
+# `ons` is already in place.
+
+sources:
+
+  # ── tgju: the Iranian feed with production evidence ──────────────────────
+  # bot/datafeed.py has been reading this endpoint from this Railway service
+  # since the bot went live. When brsapi and TSETMC stopped answering, this
+  # is what kept Engine 1 alive. Symbols `price_dollar_rl`, `mesghal`, `rob`
+  # and `ons` are the four the strategy bot itself uses in production; the
+  # rest are marked below and are worth confirming with /probe tgju.
+  tgju:
+    enabled: true
+    url: "https://api.tgju.org/v1/market/indicator/summary-table-data/{symbol}"
+    timeout: 15
+    rows: 5
+    close_index: 3       # [open, low, high, CLOSE, chg, chg%, greg, jalali]
+    date_index: 6
+    fields:
+      # proven in production by bot/datafeed.py
+      usd_free:        {symbol: price_dollar_rl, scale: 0.1}
+      mesghal_toman:   {symbol: mesghal,         scale: 0.1}
+      quarter_toman:   {symbol: rob,             scale: 0.1}
+      # `ons` is XAU in USD, not rial — no scaling, and no session date that
+      # needs to line up with the Tehran board, so it is left out of the
+      # same-session spread check.
+      xau_usd:         {symbol: ons,             scale: 1, dated: false}
+      # NOT yet confirmed from this deployment — run `/probe tgju` and check
+      # each one resolved. Delete any line that comes back empty; a missing
+      # field costs you the rules that need it and nothing else.
+      gold18k_toman:   {symbol: geram18,         scale: 0.1}
+      coin_emami:      {symbol: sekee,           scale: 0.1}
+      xag_usd:         {symbol: silver,          scale: 1, dated: false}
+      # TEDPIX was TSETMC's job. tgju publishes the index too, under a slug
+      # worth confirming — if `/probe tgju` shows this empty, delete the line.
+      tedpix:          {symbol: bourse,          scale: 1, dated: false}
+    # If `geram18` does not resolve, derive.py reconstructs gold18k_toman from
+    # `mesghal` (3.2489 g of fine gold at عیار ۷۰۵, the same constant the
+    # strategy engine uses) and flags it in /health as derived. Engine 1 —
+    # parity, the gap, grams per billion, the whole ladder — stays live either
+    # way. That is why `mesghal` is not optional.
+    #
+    # usd_havaleh has no confirmed tgju slug, so the FX-spread rules (including
+    # the `fx_spread_converging` KILL criterion) cannot evaluate without it.
+    # Until one is found:  /set usd_havaleh 157480   — persisted, and it feeds
+    # the snapshot exactly like a scraped field would.
+
+  # ── brsapi: DISABLED — not answering from Railway ────────────────────────
+  # Kept, not deleted: the mapping is correct and this is the only source that
+  # served usd_havaleh and a direct 18k print. Re-enable if you stand up the
+  # relay (see README > Blocked IPs), which is what it would take.
+  brsapi_gold:
+    enabled: false
+    url: "https://BrsApi.ir/Api/Market/Gold_Currency.php"
+    params: {key: "${BRSAPI_KEY}"}
+    timeout: 20
+    locate_by: symbol
+    fields:
+      usd_free:        {container: currency, match: "USD",            path: price, scale: 1}
+      gold18k_toman:   {container: gold,     match: "IR_GOLD_18K",    path: price, scale: 1}
+      coin_emami:      {container: gold,     match: "IR_COIN_EMAMI",  path: price, scale: 1}
+      xau_usd_ir:      {container: gold,     match: "XAUUSD",         path: price, scale: 1}
+
+  brsapi_havaleh:
+    enabled: false
+    url: "https://BrsApi.ir/Api/Market/Gold_Currency.php"
+    params: {key: "${BRSAPI_KEY}"}
+    timeout: 20
+    locate_by: symbol
+    fields:
+      usd_havaleh:     {container: currency, match: "USD_HAVALEH", path: price, scale: 1}
+
+  # metals.dev returns 401 without a key — if it is red, check METALS_DEV_KEY
+  # is actually set in Railway variables before assuming the host is blocked.
+  # These two need no key at all and cover XAU/XAG if it stays down.
+  # api.gold-api.com is the same host bot/datafeed.py already falls back to.
+  gold_api_xau:
+    enabled: true
+    url: "https://api.gold-api.com/price/XAU"
+    timeout: 15
+    fields:
+      xau_usd:         {path: "price"}
+
+  gold_api_xag:
+    enabled: true
+    url: "https://api.gold-api.com/price/XAG"
+    timeout: 15
+    fields:
+      xag_usd:         {path: "price"}
+
+  # ── world spot: not Iranian, not blocked ─────────────────────────────────
+  # Placed after tgju so a live metals.dev wins on xau/xag and tgju's `ons`
+  # covers the gap when it does not answer.
+  metals_dev:
+    enabled: true
+    url: "https://api.metals.dev/v1/latest"
+    params: {api_key: "${METALS_DEV_KEY}", currency: "USD", unit: "toz"}
+    timeout: 20
+    fields:
+      xau_usd:         {path: "metals.gold"}
+      xag_usd:         {path: "metals.silver"}
+      copper_usd_toz:  {path: "metals.copper"}
+
+  coingecko:
+    enabled: true
+    url: "https://api.coingecko.com/api/v3/simple/price"
+    params: {ids: "bitcoin", vs_currencies: "usd"}
+    timeout: 20
+    fields:
+      btc_usd:         {path: "bitcoin.usd"}
+
+  # ── TSETMC: DISABLED — not answering from Railway ────────────────────────
+  # This is the only source of fund NAV, so with it down the wrapper gates
+  # (طلا bubble, پلاتا premium, اهرم discount) and every rule in the `funds`
+  # group cannot evaluate. /health says so rather than reporting a premium of
+  # zero. Two ways back:
+  #   1. the relay (README > Blocked IPs) — `tse` is already in relay.applies_to
+  #   2. feed the four numbers by hand, which is what the desk's manual values
+  #      are for and takes about a minute a day:
+  #        /set tala_price 1556199    /set tala_nav 1578000
+  #        /set plata_price 12150     /set plata_nav 11667
+  #        /set ahrom_price 57106     /set ahrom_nav 73496
+  #      derive() computes the premiums from those exactly as it would from a
+  #      live feed, and the collector carries them forward between updates.
+  tse:
+    enabled: false
+    timeout: 25
+    referer: "https://www.tsetmc.com/"
+    symbols:
+      tala:   "طلا"
+      plata:  "پلاتا"
+      ahrom:  "اهرم"
+    codes: {}          # pin insCodes here once /probe tse shows the real ones
+    search_url:  "https://cdn.tsetmc.com/api/Instrument/GetInstrumentSearch/{symbol}"
+    search_path: "instrumentSearch"
+    search_code_key: "insCode"
+    search_symbol_key: "lVal18AFC"
+    price_url:   "https://cdn.tsetmc.com/api/ClosingPrice/GetClosingPriceInfo/{code}"
+    price_path:  "closingPriceInfo.pDrCotVal"
+    prev_path:   "closingPriceInfo.priceYesterday"
+    nav_url:     "https://cdn.tsetmc.com/api/Fund/GetETFByInsCode/{code}"
+    nav_path:    "etf.estimatedNAV"
+    index_url:   "https://cdn.tsetmc.com/api/Index/GetIndexB1LastDay/32097828799138957"
+    index_path:  "indexB1LastDay.lastIndexValueInDay"
+
+  # ── fund price + NAV: the one gap left ───────────────────────────────────
+  # TSETMC was the only source of طلا / پلاتا / اهرم price and NAV, and it does
+  # not answer this deployment. These slots are for whichever replacement you
+  # confirm works — and confirming is now one Telegram message:
+  #
+  #     /probeurl https://host/path            list every numeric field
+  #     /probeurl https://host/path nav        filter a long response
+  #
+  # A timeout or connection reset IS the answer: that host does not serve
+  # Railway either. A 200 with numbers means paste the path in below,
+  # /reload, done — no redeploy, no code change.
+  #
+  # How to find the URL: open the site in a DESKTOP browser, DevTools →
+  # Network → Fetch/XHR, reload, and copy the request that returns the
+  # numbers. The page URL itself is HTML and will not work.
+  #
+  # fipiran is the canonical NAV publisher and a different host from tsetmc,
+  # so it is the first one worth probing. The URL below is a candidate, NOT
+  # something confirmed from this deployment — probe it before trusting it.
+  #
+  #     /probeurl https://fund.fipiran.ir/api/v1/fund/fundcompare
+  #
+  # Field names must be ones derive.py knows:
+  #   tala_price  tala_nav  plata_price  plata_nav  ahrom_price  ahrom_nav
+  #   tedpix  usd_havaleh  usd_free  gold18k_toman  mesghal_toman
+  #   xau_usd  xag_usd
+  # `locate_by` + `container` picks one row out of a list by matching a
+  # field, which is how a fund list is usually shaped — see brsapi_gold above.
+
+  funds_a:
+    enabled: false
+    url: ""            # e.g. the XHR behind rahavard365 / chartix / alandinvest
+    timeout: 20
+    # locate_by: name
+    fields: {}
+    #  tala_nav:   {container: "items", match: "طلا", path: "nav", scale: 1}
+    #  tala_price: {container: "items", match: "طلا", path: "lastPrice", scale: 1}
+
+  funds_b:
+    enabled: false
+    url: ""
+    timeout: 20
+    fields: {}
+
+  # Macro values the bot cannot scrape reliably. Set with /set, persisted in DB.
+  manual:
+    iran_cpi_yoy: 87.9
+    iran_oil_exports_bpd: 300000
+
+# Optional relay for when Railway's IP is blocked by Iranian hosts.
+# Run relay.py on any box inside Iran; point IRAN_RELAY_URL at it.
+# tgju answers directly today, but route it too if that ever changes.
+relay:
+  applies_to: [brsapi_gold, brsapi_havaleh, tse, tgju]

@@ -1,0 +1,11 @@
+*.md
+!bot/README.md
+charts/
+data/
+.git/
+
+# The metals desk ships its rules and source mapping as data, so both
+# must reach the container alongside its code.
+!bot/desk/config/
+!bot/desk/config/*.yaml
+!bot/desk/README.md
